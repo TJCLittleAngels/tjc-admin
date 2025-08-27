@@ -1,0 +1,1104 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Google 試算表 CSV 轉換 & Firebase 上傳</title>
+    <!-- Papa Parse (CSV 解析) -->
+    <script src="https://cdn.jsdelivr.net/npm/papaparse@5.3.2/papaparse.min.js"></script>
+    <!-- Firebase SDK (舊程式碼參考) -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 20px;
+      }
+      pre {
+        background: #f5f5f5;
+        padding: 10px;
+        max-height: 400px;
+        overflow-y: auto;
+      }
+      input,
+      button {
+        padding: 8px;
+        margin: 5px 0;
+        font-size: 1em;
+      }
+      label {
+        font-weight: bold;
+      }
+      .user-card {
+        background: #fff;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+        margin: 16px 0;
+        padding: 16px 24px;
+        max-width: 500px;
+      }
+      .user-card h4 {
+        margin: 0 0 8px 0;
+        color: #2a5d9f;
+        font-size: 1.2em;
+        letter-spacing: 1px;
+      }
+      .user-job-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+      }
+      .user-job-list li {
+        padding: 6px 0;
+        border-bottom: 1px solid #eee;
+        font-size: 1em;
+      }
+      .user-job-list li:last-child {
+        border-bottom: none;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Google 試算表 CSV 轉換 & Firebase 上傳</h1>
+
+    <!-- Google Sheet 相關 & 圖片網址上傳 -->
+    <div style="display: flex; gap: 40px">
+      <!-- 左半邊：Google Sheet 解析 -->
+      <div style="flex: 1">
+        <label>(莒光教會)試算表網址 / Sheet ID：</label><br />
+        <input
+          type="text"
+          id="urlInput"
+          style="width: 100%"
+          placeholder="貼上 Google 試算表網址或輸入 Sheet ID"
+          value="https://docs.google.com/spreadsheets/d/1MiJOg52vv4ydrZpx6QxhfYy96Fy0uCZs/edit?gid=1775042568#gid=1775042568"
+        />
+        <button id="parseButton">解析網址</button>
+        <br />
+        <label>Sheet ID：</label>
+        <input
+          type="text"
+          id="sheetIdInput"
+          placeholder="sheetId"
+          style="width: 60%"
+        />
+        <br />
+        <label>gid：</label>
+        <input type="text" id="gidInput" placeholder="gid" style="width: 60%" />
+        <button id="fetchButton">抓取資料並解析</button>
+      </div>
+
+      <!-- 右半邊：圖片網址上傳 -->
+      <div style="flex: 1">
+        <h3 style="margin-top: 0">上傳圖片網址至 Firebase</h3>
+        <label>請輸入圖片網址：</label><br />
+        <div style="display: flex; gap: 5px; margin-bottom: 10px">
+          <input
+            type="url"
+            id="imageUrlInput"
+            placeholder="https://example.com/image.jpg"
+            style="flex: 1"
+          />
+          <button id="previewImageBtn" style="padding: 8px 12px">
+            檢視圖片
+          </button>
+        </div>
+
+        <!-- 圖片預覽區域 -->
+        <div
+          id="imagePreviewContainer"
+          style="display: none; margin-bottom: 10px; text-align: center"
+        >
+          <div
+            style="
+              border: 1px solid #ddd;
+              padding: 10px;
+              border-radius: 4px;
+              background: #f9f9f9;
+            "
+          >
+            <img
+              id="previewImage"
+              style="max-width: 100%; max-height: 200px; border-radius: 4px"
+            />
+            <div style="margin-top: 5px; font-size: 0.9em; color: #666">
+              圖片預覽
+            </div>
+          </div>
+        </div>
+
+        <label>請選擇上傳類型：</label><br />
+        <select
+          id="uploadTypeSelect"
+          style="width: 100%; padding: 8px; margin: 5px 0; font-size: 1em"
+        >
+          <option value="schedule">安排表</option>
+          <option value="中級班">中級班</option>
+          <option value="信仰造就班">信仰造就班</option>
+          <option value="初級班">初級班</option>
+          <option value="少年班">少年班</option>
+          <option value="幼兒班">幼兒班</option>
+          <option value="幼年班">幼年班</option>
+        </select>
+        <br />
+
+        <div id="monthSelectContainer">
+          <label>請選擇年月：</label><br />
+          <select
+            id="imageMonthSelect"
+            style="width: 100%; padding: 8px; margin: 5px 0; font-size: 1em"
+          >
+            <!-- 動態生成選項 -->
+          </select>
+          <br />
+        </div>
+        <button id="uploadImageBtn">上傳圖片網址至 Firebase</button>
+      </div>
+    </div>
+    <br />
+
+    <!-- 解析結果顯示 -->
+    <h3>解析後的表格 (JSON)：</h3>
+    <pre id="output">尚未解析...</pre>
+
+    <!-- Firebase 上傳功能 -->
+    <hr />
+    <h3>上傳工作表至 Firebase</h3>
+    <label>請輸入月份 (格式：yyyymm)：</label><br />
+    <input type="text" id="monthInput" placeholder="202503" />
+    <button id="uploadBtn">上傳工作表至 Firebase</button>
+
+    <h3>使用者工作情形：</h3>
+    <div id="userJobs"></div>
+
+    <script>
+      /*******************************************************
+       * 1. Firebase 初始化 (請換成你自己的 Firebase config)
+       *******************************************************/
+      const firebaseConfig = {
+        apiKey: "AIzaSyCGAdNce7wCJLPmqPZ4ID3PxvBDFDD8uSY",
+        authDomain: "tjc-tw.firebaseapp.com",
+        databaseURL:
+          "https://tjc-tw-default-rtdb.asia-southeast1.firebasedatabase.app",
+        projectId: "tjc-tw",
+        storageBucket: "tjc-tw.firebasestorage.app",
+        messagingSenderId: "857954351277",
+        appId: "1:857954351277:web:448c392836ef137e44ee24",
+        measurementId: "G-Y3T47ZWQCB",
+      };
+      firebase.initializeApp(firebaseConfig);
+      const database = firebase.database();
+
+      /*******************************************************
+       * 2. 解析 Google 試算表網址，取得 sheetId 與 gid
+       *******************************************************/
+      function parseSpreadsheetUrl(url) {
+        let sheetId = "";
+        let gid = "";
+        const idMatch = url.match(/\/d\/([^/]+)/);
+        if (idMatch && idMatch[1]) {
+          sheetId = idMatch[1];
+        }
+        const gidMatch = url.match(/gid=([^&]+)/);
+        if (gidMatch && gidMatch[1]) {
+          gid = gidMatch[1];
+        }
+        return { sheetId, gid };
+      }
+
+      /*******************************************************
+       * 莒光教會特化函數：處理接待人員和炊事自動補全
+       *******************************************************/
+      function jgtjcProcessReceptionist(data) {
+        return data.map((row) => {
+          return row.map((cell, cellIndex) => {
+            if (cellIndex < row.length - 1) {
+              const currentCell = cell.trim();
+              const nextCell = row[cellIndex + 1].trim();
+
+              // 處理接待人員
+              if (
+                currentCell === "接待人員" &&
+                (nextCell === "" || nextCell === "-")
+              ) {
+                row[cellIndex + 1] = "接待人員";
+              }
+
+              // 處理炊事 - 自動往後面補兩格（如果是空的）
+              if (currentCell === "炊事") {
+                // 檢查後面兩格是否為空
+                if (
+                  cellIndex + 1 < row.length &&
+                  (row[cellIndex + 1].trim() === "" ||
+                    row[cellIndex + 1].trim() === "-")
+                ) {
+                  row[cellIndex + 1] = "炊事";
+                }
+                if (
+                  cellIndex + 2 < row.length &&
+                  (row[cellIndex + 2].trim() === "" ||
+                    row[cellIndex + 2].trim() === "-")
+                ) {
+                  row[cellIndex + 2] = "炊事";
+                }
+              }
+            }
+            return cell;
+          });
+        });
+      }
+
+      /*******************************************************
+       * 莒光教會特化函數：自動填入西元年月份
+       *******************************************************/
+      function jgtjcAutoFillYearMonth(data) {
+        // 尋找第一個包含 "XXX年XX月" 格式的資料
+        for (let rowIndex = 0; rowIndex < data.length; rowIndex++) {
+          const row = data[rowIndex];
+          for (let colIndex = 0; colIndex < row.length; colIndex++) {
+            const cell = row[colIndex];
+            if (cell && typeof cell === "string") {
+              const match = cell.match(/(\d{3,4})年(\d{1,2})月/);
+              if (match) {
+                let year = match[1];
+                const month = match[2].padStart(2, "0"); // 確保月份是兩位數
+
+                // 民國年轉西元年（民國年 + 1911 = 西元年）
+                const westernYear = parseInt(year) + 1911;
+                const yearMonth = westernYear.toString() + month;
+
+                // 自動填入到月份輸入框
+                const monthInput = document.getElementById("monthInput");
+                if (monthInput) {
+                  monthInput.value = yearMonth;
+                  console.log(
+                    "民國年轉西元年：",
+                    match[1] + "年" + match[2] + "月 → " + yearMonth
+                  );
+                }
+                return yearMonth; // 返回找到的年月
+              }
+            }
+          }
+        }
+        return null; // 如果沒找到就返回 null
+      }
+
+      /*******************************************************
+       * 莒光教會特化函數：處理清掃區域和環境清潔的關聯
+       *******************************************************/
+      function jgtjcProcessCleaningArea(workSheet) {
+        // 建立日期到清掃區域的映射
+        const dateToCleaningArea = {};
+
+        // 第一遍：收集所有清掃區域的資訊
+        for (const personName in workSheet) {
+          workSheet[personName].forEach((job) => {
+            if (job.task === "清掃區域") {
+              const date = job.date;
+              // 把人名當作區域資訊
+              if (!dateToCleaningArea[date]) {
+                dateToCleaningArea[date] = [];
+              }
+              dateToCleaningArea[date].push(personName);
+            }
+          });
+        }
+
+        // 第二遍：更新環境清潔的工作內容
+        for (const personName in workSheet) {
+          workSheet[personName].forEach((job) => {
+            if (job.task === "環境清潔") {
+              const date = job.date;
+              const areas = dateToCleaningArea[date];
+              if (areas && areas.length > 0) {
+                // 將區域資訊合併到環境清潔中
+                job.task = `環境清潔-區域：${areas.join("、")}`;
+              }
+            }
+          });
+        }
+
+        console.log("處理清掃區域後的結果：", workSheet);
+        return workSheet;
+      }
+
+      /*******************************************************
+       * 3. 依水平空白行、垂直空白欄切割 CSV
+       *******************************************************/
+      function splitTablesByEmptyRowsAndColumns(csvData) {
+        // 1) 水平空白行
+        const blocks = [];
+        let currentBlock = [];
+        csvData.forEach((row) => {
+          const isRowEmpty = row.every((cell) => cell.trim() === "");
+          if (isRowEmpty) {
+            if (currentBlock.length > 0) {
+              blocks.push(currentBlock);
+              currentBlock = [];
+            }
+          } else {
+            currentBlock.push(row);
+          }
+        });
+        if (currentBlock.length > 0) {
+          blocks.push(currentBlock);
+        }
+
+        // 2) 垂直空白欄
+        const tables = [];
+        blocks.forEach((block) => {
+          const maxColumns = block.reduce(
+            (max, row) => Math.max(max, row.length),
+            0
+          );
+          let boundary = -1;
+          for (let col = 1; col < maxColumns - 1; col++) {
+            let emptyCount = 0;
+            block.forEach((row) => {
+              if (!row[col] || row[col].trim() === "") {
+                emptyCount++;
+              }
+            });
+            if (emptyCount > block.length / 1) {
+              boundary = col;
+              break;
+            }
+          }
+          if (boundary === -1) {
+            tables.push(block);
+          } else {
+            const leftTable = block.map((row) => row.slice(0, boundary));
+            const rightTable = block.map((row) => row.slice(boundary));
+            tables.push(leftTable, rightTable);
+          }
+        });
+
+        console.log("分區後的結果：", tables);
+        return tables;
+      }
+
+      /*******************************************************
+       * 4. 依「日期/星期」關鍵字進一步分割
+       *******************************************************/
+      function splitTablesByDateKeyword(tableBlocks) {
+        const finalSubTables = [];
+
+        function isDateHeader(row) {
+          return row.some((cell) => {
+            const txt = cell.trim();
+            return txt.includes("日期") || txt.includes("星期");
+          });
+        }
+        function isRowEmpty(row) {
+          return row.every((cell) => cell.trim() === "");
+        }
+        function isValidDateOrWeek(row) {
+          if (row.length === 0) return false;
+          const text = row[0].trim();
+          if (text === "") return true; // 空字串
+          if (!isNaN(text)) return true; // 純數字
+          const firstChar = text.charAt(0);
+          const validChars = ["一", "二", "三", "四", "五", "六", "日"];
+          if (validChars.includes(firstChar)) return true;
+          if (text === "星期" || text === "日期") return true;
+          const withoutDash = text.replace("-", "");
+          if (!isNaN(withoutDash)) return true;
+          return false;
+        }
+
+        tableBlocks.forEach((block) => {
+          if (block.every((row) => row[0].trim() === "")) {
+            block.forEach((row) => row.shift());
+          }
+          let subTables = [];
+          let currentSubTable = [];
+          let emptyLineCount = 0;
+          let inSubTable = false;
+
+          block.forEach((row) => {
+            const rowIsEmpty = isRowEmpty(row);
+            emptyLineCount = rowIsEmpty ? emptyLineCount + 1 : 0;
+            const hasDateHeader = isDateHeader(row);
+
+            if (hasDateHeader) {
+              if (inSubTable && currentSubTable.length > 0) {
+                subTables.push(currentSubTable);
+                currentSubTable = [];
+              }
+              inSubTable = true;
+              currentSubTable.push(row);
+            } else if (inSubTable && !rowIsEmpty) {
+              currentSubTable.push(row);
+            }
+
+            if (emptyLineCount >= 2 && inSubTable) {
+              subTables.push(currentSubTable);
+              currentSubTable = [];
+              inSubTable = false;
+            }
+            if (!isValidDateOrWeek(row) && inSubTable) {
+              currentSubTable.pop();
+              subTables.push(currentSubTable);
+              currentSubTable = [];
+              inSubTable = false;
+            }
+          });
+          if (currentSubTable.length > 0) {
+            subTables.push(currentSubTable);
+          }
+          if (subTables.length === 0) {
+            subTables.push(block);
+          }
+          finalSubTables.push(subTables);
+        });
+
+        console.log("二次切割結果：", finalSubTables);
+        return finalSubTables;
+      }
+
+      /*******************************************************
+       * 5. 從第一個子表格抓取「xxxx年xx月」
+       *******************************************************/
+      function extractYearMonth(titleRow) {
+        console.log("titleRow", titleRow);
+        const match = titleRow[0].match(/(\d{4})年(\d{1,2})月/);
+        if (match) {
+          return { year: match[1], month: match[2] };
+        }
+        return { year: "", month: "" };
+      }
+
+      /*******************************************************
+       * 6. 補全「日期欄位」「六下欄位」並移除換行符號
+       *******************************************************/
+      function fillDateAndSixDown(table) {
+        // 若第二行第一格為空 -> 表頭兩行合併
+        if (table.length >= 2 && table[1][0].trim() === "") {
+          const secondHeader = table[1];
+          for (let col = 0; col < secondHeader.length; col++) {
+            const cellVal = secondHeader[col].trim();
+            if (cellVal !== "") {
+              table[0][col] = table[0][col].trim()
+                ? table[0][col].trim() + "/" + cellVal
+                : cellVal;
+            }
+          }
+          table.splice(1, 1);
+        }
+
+        // 補全標頭
+        if (table.length > 0) {
+          for (let col = 1; col < table[0].length; col++) {
+            if (!table[0][col] || table[0][col].trim() === "") {
+              table[0][col] = table[0][col - 1];
+            }
+          }
+        }
+
+        // 從第二列開始
+        for (let i = 1; i < table.length; i++) {
+          const row = table[i];
+          const prevRow = table[i - 1];
+          // 日期欄空 -> 用上一列日期
+          if (
+            (!row[0] || row[0].trim() === "") &&
+            prevRow[0] &&
+            !isNaN(prevRow[0].trim())
+          ) {
+            row[0] = prevRow[0];
+          }
+          // 若第二欄為 "六下"，且第三欄空 -> 用上一列第三欄補
+          if (row[1] && row[1].trim() === "六下") {
+            if (!row[2] || row[2].trim() === "") {
+              if (prevRow[2] && prevRow[2].trim() !== "") {
+                row[2] = prevRow[2];
+              }
+            }
+          }
+        }
+
+        // 移除換行符號
+        for (let i = 0; i < table.length; i++) {
+          for (let j = 0; j < table[i].length; j++) {
+            table[i][j] = table[i][j].replace(/\n\s*/g, "");
+          }
+        }
+
+        // 若第一列第二欄是 "會後報告"，遇到空則用上一列補
+        if (table[0][1].replace("\n", "") === "會後報告") {
+          for (let i = 1; i < table.length; i++) {
+            if (!table[i][1] || table[i][1].trim() === "") {
+              table[i][1] = table[i - 1][1] || "";
+            }
+          }
+        }
+
+        console.log("填補並清理後的表格：", table);
+        return table;
+      }
+
+      /*******************************************************
+       * 7. 計算特定日期的星期 & 計算某星期對應之所有日期
+       *******************************************************/
+      function getWeekdayFromDate(year, month, dateNum) {
+        const dt = new Date(year, month - 1, dateNum);
+        return dt.getDay(); // 0=日,1=一,...,6=六
+      }
+      function getDatesForWeekday(year, month, weekdayNum) {
+        const dates = [];
+        const daysInMonth = new Date(year, month, 0).getDate();
+        for (let d = 1; d <= daysInMonth; d++) {
+          const dt = new Date(year, month - 1, d);
+          if (dt.getDay() === weekdayNum) {
+            dates.push(d);
+          }
+        }
+        return dates;
+      }
+
+      /*******************************************************
+       * 8. 將多表格轉為「工作表物件」(以人名為 key)
+       *******************************************************/
+      function tablesToWork(finalTables, { year, month }) {
+        const workSheet = {};
+        const validWeekdays = ["日", "一", "二", "三", "四", "五", "六"];
+        const weekdayMapping = {
+          日: 0,
+          一: 1,
+          二: 2,
+          三: 3,
+          四: 4,
+          五: 5,
+          六: 6,
+        };
+
+        finalTables.forEach((table) => {
+          // 檢查第一列第一格，判斷模式
+          if (table[0][0] === "日期") {
+            // 日期模式
+            let hasWeekday = false;
+            if (table[0][1] === "星期") {
+              hasWeekday = true;
+            }
+            const workStartIndex = hasWeekday ? 2 : 1;
+
+            for (let i = 1; i < table.length; i++) {
+              const dateVal = table[i][0];
+              for (let j = workStartIndex; j < table[i].length; j++) {
+                const cellVal = table[i][j].trim();
+                if (cellVal === "" || cellVal === "-") continue;
+
+                // 多人分配
+                if (cellVal.includes("∣") || cellVal.includes(" ")) {
+                  // 先按 ∣ 分割，再按空格分割
+                  let multiplePersons = [];
+                  if (cellVal.includes("∣")) {
+                    multiplePersons = cellVal.split("∣");
+                  } else {
+                    multiplePersons = cellVal.split(" ");
+                  }
+
+                  multiplePersons.forEach((personName) => {
+                    personName = personName.trim().replace(/\s+/g, "");
+                    if (!personName || personName === "") return;
+                    if (!workSheet[personName]) workSheet[personName] = [];
+                    workSheet[personName].push({
+                      date: dateVal,
+                      weekDay: hasWeekday
+                        ? table[i][1]
+                        : validWeekdays[
+                            getWeekdayFromDate(year, month, dateVal)
+                          ],
+                      work: table[0][j],
+                    });
+                  });
+                } else {
+                  // 單一負責人
+                  const cleanName = cellVal.trim().replace(/\s+/g, "");
+                  if (!workSheet[cleanName]) {
+                    workSheet[cleanName] = [];
+                  }
+                  workSheet[cleanName].push({
+                    date: dateVal,
+                    weekDay: hasWeekday
+                      ? table[i][1]
+                      : validWeekdays[getWeekdayFromDate(year, month, dateVal)],
+                    work: table[0][j],
+                  });
+                }
+              }
+            }
+          } else if (table[0][0] === "星期") {
+            // 星期模式
+            for (let i = 1; i < table.length; i++) {
+              for (let j = 1; j < table[i].length; j++) {
+                const person = table[i][j].trim().replace(/\s+/g, "");
+                if (person === "" || person === "-") continue;
+                const targetWeekday = table[i][0];
+                if (!validWeekdays.includes(targetWeekday[0])) {
+                  console.warn("偵測到無效星期:", targetWeekday);
+                  continue;
+                }
+                const possibleDates = getDatesForWeekday(
+                  year,
+                  month,
+                  weekdayMapping[targetWeekday[0]]
+                );
+                possibleDates.forEach((d) => {
+                  if (!workSheet[person]) {
+                    workSheet[person] = [];
+                  }
+                  workSheet[person].push({
+                    date: d.toString(),
+                    weekDay: targetWeekday,
+                    work: table[0][j],
+                  });
+                });
+              }
+            }
+          } else {
+            console.error(
+              "表格第一列第一格既不是『日期』也不是『星期』，忽略處理：",
+              table[0]
+            );
+          }
+        });
+        return workSheet;
+      }
+
+      /**
+       * 將 workSheet 中每個人的工作項目，
+       * 從 { date, weekDay, work } 轉為 { date, timeSlot, task }，
+       * 並跳過任何有 undefined 欄位的項目。
+       *
+       * @param {Object} workSheet - 原始的工作表物件，例如：
+       * {
+       *   "王小明": [
+       *     { date: "12", weekDay: "三", work: "會前領詩" },
+       *     { date: "12", weekDay: "三", work: "翻譯" },
+       *     { date: undefined, weekDay: "三", work: "其他" } // 這筆會被跳過
+       *   ],
+       *   "李大華": [
+       *     { date: "15", weekDay: "六下", work: "司琴" }
+       *   ]
+       * }
+       * @returns {Object} - 轉換後的工作表物件，結構為：
+       * {
+       *   "王小明": [
+       *     { date: "12", timeSlot: "三", task: "會前領詩" },
+       *     { date: "12", timeSlot: "三", task: "翻譯" }
+       *   ],
+       *   "李大華": [
+       *     { date: "15", timeSlot: "六下", task: "司琴" }
+       *   ]
+       * }
+       */
+      function transformWorkSheet(workSheet) {
+        const transformedSheet = {};
+        for (const personName in workSheet) {
+          // 去除 personName 中的所有斜線
+          const cleanPersonName = personName.replace(/\//g, "");
+          transformedSheet[cleanPersonName] = workSheet[personName].reduce(
+            (acc, item) => {
+              // 檢查是否有任何欄位為 undefined
+              if (
+                item.date !== undefined &&
+                item.weekDay !== undefined &&
+                item.work !== undefined
+              ) {
+                acc.push({
+                  date: item.date,
+                  timeSlot: item.weekDay,
+                  task: item.work,
+                });
+              }
+              return acc;
+            },
+            []
+          );
+        }
+        return transformedSheet;
+      }
+
+      /*******************************************************
+       * 全域變數：儲存「最終的轉換後工作表物件」
+       *******************************************************/
+      let finalTransformedSheet = null;
+
+      /*******************************************************
+       * 初始化圖片上傳功能：生成年月下拉選單
+       *******************************************************/
+      function initializeImageUpload() {
+        const select = document.getElementById("imageMonthSelect");
+        const currentDate = new Date();
+
+        // 生成 -3 到 +6 個月的選項
+        for (let i = -3; i <= 6; i++) {
+          const targetDate = new Date(
+            currentDate.getFullYear(),
+            currentDate.getMonth() + i,
+            1
+          );
+          const year = targetDate.getFullYear();
+          const month = (targetDate.getMonth() + 1).toString().padStart(2, "0");
+          const yearMonth = `${year}${month}`;
+
+          const option = document.createElement("option");
+          option.value = yearMonth;
+          option.textContent = `${year}年${month}月 (${yearMonth})`;
+
+          // 如果是當前月份，設為預設選項
+          if (i === 0) {
+            option.selected = true;
+          }
+
+          select.appendChild(option);
+        }
+      }
+
+      // 頁面載入時初始化
+      document.addEventListener("DOMContentLoaded", function () {
+        initializeImageUpload();
+        initializeUploadTypeHandler();
+      });
+
+      /*******************************************************
+       * 初始化上傳類型變更處理
+       *******************************************************/
+      function initializeUploadTypeHandler() {
+        const uploadTypeSelect = document.getElementById("uploadTypeSelect");
+        const monthSelectContainer = document.getElementById(
+          "monthSelectContainer"
+        );
+
+        // 設定變更事件監聽器
+        uploadTypeSelect.addEventListener("change", function () {
+          const selectedType = this.value;
+
+          if (selectedType === "schedule") {
+            // 選擇安排表時顯示年月選項
+            monthSelectContainer.style.display = "block";
+          } else {
+            // 選擇班級時隱藏年月選項
+            monthSelectContainer.style.display = "none";
+          }
+        });
+
+        // 初始化時根據預設值設定顯示狀態
+        const initialType = uploadTypeSelect.value;
+        if (initialType === "schedule") {
+          monthSelectContainer.style.display = "block";
+        } else {
+          monthSelectContainer.style.display = "none";
+        }
+      }
+
+      /*******************************************************
+       * 事件：解析網址 → 填入 sheetId/gid
+       *******************************************************/
+      document
+        .getElementById("parseButton")
+        .addEventListener("click", function () {
+          const url = document.getElementById("urlInput").value.trim();
+          if (!url) {
+            alert("請貼上有效的 Google 試算表網址或 Sheet ID！");
+            return;
+          }
+          const { sheetId, gid } = parseSpreadsheetUrl(url);
+          if (!sheetId) {
+            alert("無法解析出 sheetId，請確認網址是否正確。");
+            return;
+          }
+          document.getElementById("sheetIdInput").value = sheetId;
+          document.getElementById("gidInput").value = gid;
+        });
+
+      /*******************************************************
+       * 事件：抓取 CSV → Papa Parse → 切割 → 補全 → 轉換
+       *******************************************************/
+      document
+        .getElementById("fetchButton")
+        .addEventListener("click", function () {
+          const sheetId = document.getElementById("sheetIdInput").value.trim();
+          const gid = document.getElementById("gidInput").value.trim();
+          const output = document.getElementById("output");
+          output.textContent = "解析中...";
+
+          if (!sheetId) {
+            alert("請先填入 sheetId！");
+            return;
+          }
+          const finalGid = gid || "0";
+          const csvUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&id=${sheetId}&gid=${finalGid}`;
+
+          fetch(csvUrl)
+            .then((response) => {
+              if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+              }
+              return response.text();
+            })
+            .then((csvText) => {
+              // 1) Papa Parse
+              const parsedCsv = Papa.parse(csvText);
+
+              // 2) 莒光教會特化：立即處理接待人員自動補全（資料一進來就執行）
+              const processedData = jgtjcProcessReceptionist(parsedCsv.data);
+              console.log("立即處理接待人員後的原始資料：", processedData);
+
+              // 3) 莒光教會特化：自動填入西元年月份
+              jgtjcAutoFillYearMonth(parsedCsv.data);
+
+              // 3) 水平空白行 + 垂直空白欄
+              const tableBlocks =
+                splitTablesByEmptyRowsAndColumns(processedData);
+
+              // 4) 依日期/星期關鍵字再切割
+              const dateSubTables = splitTablesByDateKeyword(tableBlocks);
+
+              // 5) 攤平成單一陣列
+              const flatTables = [];
+              dateSubTables.forEach((blocks) => {
+                blocks.forEach((subTable) => {
+                  flatTables.push(subTable);
+                });
+              });
+
+              // 移除所有空的直行
+              function removeEmptyColumns(table) {
+                if (!table.length) return table;
+                const colCount = table[0].length;
+                // 找出哪些欄位是全空
+                const emptyCols = [];
+                for (let col = 0; col < colCount; col++) {
+                  let allEmpty = true;
+                  for (let row = 0; row < table.length; row++) {
+                    if (table[row][col] && table[row][col].trim() !== "") {
+                      allEmpty = false;
+                      break;
+                    }
+                  }
+                  if (allEmpty) emptyCols.push(col);
+                }
+                // 建立新的 table，移除空欄
+                return table.map((row) =>
+                  row.filter((_, idx) => !emptyCols.includes(idx))
+                );
+              }
+
+              const validFlatTables = flatTables
+                .map(removeEmptyColumns)
+                .filter((table) =>
+                  table.some((row) => row.some((cell) => cell !== ""))
+                );
+
+              console.log("移除所有空的直行後的表格：", validFlatTables);
+
+              // 6) 從第一個子表格抓取 yearMonth (若可取得)
+              const yearMonth = extractYearMonth(validFlatTables[0][0]);
+              console.log("yearMonth", yearMonth);
+
+              // 7) 篩選出第一列第一格為「日期」或「星期」的表格
+              const validTables = validFlatTables.filter((table) => {
+                if (table[0].length === 0) return false;
+                const firstCell = table[0][0].trim();
+                return firstCell === "日期" || firstCell === "星期";
+              });
+              console.log("有效安排表：", validTables);
+
+              // 有效安排表應為2份 如果沒有 要提示
+              if (validTables.length !== 2) {
+                alert("有效安排表應為2份 目前數量有誤 請進行額外確認");
+              }
+
+              // 8) 補全欄位
+              const finalTables = validTables.map((table) =>
+                fillDateAndSixDown(table)
+              );
+              console.log("最終處理後的表格：", finalTables);
+
+              // 8) 轉換成 workSheet
+              const workSheet = tablesToWork(finalTables, yearMonth);
+              console.log("原始工作表物件：", workSheet);
+
+              // 9) 進一步轉成 { date, timeSlot, task }
+              finalTransformedSheet = transformWorkSheet(workSheet);
+              console.log("轉換後的工作表物件：", finalTransformedSheet);
+
+              // 10) 莒光教會特化：處理清掃區域和環境清潔的關聯
+              finalTransformedSheet = jgtjcProcessCleaningArea(
+                finalTransformedSheet
+              );
+
+              // 顯示每個使用者的工作情形
+              const userJobsDiv = document.getElementById("userJobs");
+              userJobsDiv.innerHTML = ""; // 清空
+              for (const [user, jobs] of Object.entries(
+                finalTransformedSheet
+              )) {
+                const card = document.createElement("div");
+                card.className = "user-card";
+                const title = document.createElement("h4");
+                title.textContent = user;
+                card.appendChild(title);
+
+                if (jobs.length === 0) {
+                  const empty = document.createElement("div");
+                  empty.textContent = "（本月無工作）";
+                  card.appendChild(empty);
+                } else {
+                  const ul = document.createElement("ul");
+                  ul.className = "user-job-list";
+                  jobs.forEach((job) => {
+                    const li = document.createElement("li");
+                    li.textContent = `📅 ${job.date}｜${job.timeSlot}｜${job.task}`;
+                    ul.appendChild(li);
+                  });
+                  card.appendChild(ul);
+                }
+                userJobsDiv.appendChild(card);
+              }
+
+              // 在畫面上顯示
+              output.textContent = JSON.stringify(finalTables, null, 2);
+            })
+            .catch((error) => {
+              console.error(error);
+              output.textContent = "抓取或解析資料時發生錯誤：" + error.message;
+            });
+        });
+
+      /*******************************************************
+       * 事件：將 finalTransformedSheet 上傳至 Firebase
+       *******************************************************/
+      document
+        .getElementById("uploadBtn")
+        .addEventListener("click", function () {
+          const month = document.getElementById("monthInput").value.trim();
+          if (!month || !/^\d{6}$/.test(month)) {
+            alert("請輸入正確格式的月份 (yyyymm)");
+            return;
+          }
+          if (!finalTransformedSheet) {
+            alert("尚未生成工作表資料，請先『抓取資料並解析』！");
+            return;
+          }
+
+          const path = `line/schedule/jgtjc/${month}`;
+          database.ref(path).set(finalTransformedSheet, function (error) {
+            if (error) {
+              alert("上傳失敗：" + error);
+            } else {
+              alert("成功上傳工作表資料至 Firebase！");
+            }
+          });
+        });
+
+      /*******************************************************
+       * 事件：檢視圖片預覽
+       *******************************************************/
+      document
+        .getElementById("previewImageBtn")
+        .addEventListener("click", function () {
+          const imageUrl = document
+            .getElementById("imageUrlInput")
+            .value.trim();
+
+          if (!imageUrl) {
+            alert("請先輸入圖片網址！");
+            return;
+          }
+
+          // 簡單的網址格式驗證
+          try {
+            new URL(imageUrl);
+          } catch (e) {
+            alert("請輸入有效的網址格式！");
+            return;
+          }
+
+          const previewContainer = document.getElementById(
+            "imagePreviewContainer"
+          );
+
+          // 直接顯示圖片，不進行預先載入測試
+          previewContainer.style.display = "block";
+          previewContainer.innerHTML = `
+            <div style="border: 1px solid #2196f3; padding: 10px; border-radius: 4px; background: #e3f2fd;">
+              <img 
+                src="${imageUrl}" 
+                style="max-width: 100%; max-height: 200px; border-radius: 4px; display: block; margin: 0 auto;" 
+                onload="this.parentElement.style.borderColor='#4caf50'; this.parentElement.style.backgroundColor='#e8f5e8'; this.nextElementSibling.innerHTML='✅ 圖片載入成功<br><small style=\\'color:#666;\\'>網址：${imageUrl}</small>'; this.nextElementSibling.style.color='#2e7d32';"
+                onerror="this.style.display='none'; this.parentElement.style.borderColor='#ff9800'; this.parentElement.style.backgroundColor='#fff3e0'; this.nextElementSibling.innerHTML='⚠️ 瀏覽器預覽失敗<br><small style=\\'font-size:0.8em;\\'>常見於 imgur 等服務的安全限制<br><strong>網址本身可能是正確的，建議直接上傳！</strong><br><br>網址：${imageUrl}</small>'; this.nextElementSibling.style.color='#ef6c00';"
+              />
+              <div style="margin-top: 5px; font-size: 0.9em; color: #1976d2; text-align: center;">
+                🔄 載入圖片中...
+              </div>
+            </div>
+          `;
+        });
+
+      /*******************************************************
+       * 事件：將圖片網址上傳至 Firebase
+       *******************************************************/
+      document
+        .getElementById("uploadImageBtn")
+        .addEventListener("click", function () {
+          const imageUrl = document
+            .getElementById("imageUrlInput")
+            .value.trim();
+          const selectedMonth =
+            document.getElementById("imageMonthSelect").value;
+          const uploadType = document.getElementById("uploadTypeSelect").value;
+
+          if (!imageUrl) {
+            alert("請輸入圖片網址！");
+            return;
+          }
+
+          // 簡單的網址格式驗證
+          try {
+            new URL(imageUrl);
+          } catch (e) {
+            alert("請輸入有效的網址格式！");
+            return;
+          }
+
+          if (!uploadType) {
+            alert("請選擇上傳類型！");
+            return;
+          }
+
+          // 如果是安排表但沒選擇年月，提示錯誤
+          if (uploadType === "schedule" && !selectedMonth) {
+            alert("請選擇年月！");
+            return;
+          }
+
+          // 根據上傳類型決定路徑
+          let path;
+          if (uploadType === "schedule") {
+            path = `line/schedule/jgtjc/schedule_image/${selectedMonth}`;
+          } else {
+            path = `line/schedule/jgtjc/class/${uploadType}`;
+          }
+
+          database.ref(path).set(imageUrl, function (error) {
+            if (error) {
+              alert("上傳失敗：" + error);
+            } else {
+              alert(
+                `成功上傳圖片網址至 Firebase！\n類型：${
+                  uploadType === "schedule" ? "安排表" : uploadType
+                }\n路徑：${path}\n網址：${imageUrl}`
+              );
+              // 清空輸入框和預覽
+              document.getElementById("imageUrlInput").value = "";
+              document.getElementById("imagePreviewContainer").style.display =
+                "none";
+            }
+          });
+        });
+    </script>
+  </body>
+</html>
