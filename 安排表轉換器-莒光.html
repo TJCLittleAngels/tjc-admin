@@ -9,38 +9,182 @@
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
     <style>
+      :root {
+        /* 固定使用淺色系 */
+        --bg: #f6f7fb;
+        --card: #ffffff;
+        --text: #1e293b;
+        --muted: #64748b;
+        --primary: #2a5d9f;
+        --primary-600: #244f86;
+        --danger: #c62828;
+        --danger-600: #b71c1c;
+        --ring: #93c5fd;
+        --radius: 12px;
+        --shadow: 0 6px 24px rgba(15, 23, 42, 0.08);
+        --space-1: 6px;
+        --space-2: 10px;
+        --space-3: 14px;
+        --space-4: 20px;
+        --space-5: 28px;
+        --font-sm: 14px;
+        --font-md: 16px;
+        --font-lg: 18px;
+        --font-xl: 22px;
+
+        /* 讓瀏覽器控制項固定走淺色 */
+        color-scheme: light;
+      }
+
+      html,
       body {
-        font-family: Arial, sans-serif;
-        margin: 20px;
+        background: var(--bg);
+        color: var(--text);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          "Helvetica Neue", Arial, sans-serif;
+        line-height: 1.6;
       }
-      pre {
-        background: #f5f5f5;
-        padding: 10px;
-        max-height: 400px;
-        overflow-y: auto;
+
+      .container {
+        max-width: 1100px;
+        margin: 0 auto;
+        padding: var(--space-5) var(--space-4);
       }
-      input,
-      button {
-        padding: 8px;
-        margin: 5px 0;
-        font-size: 1em;
+
+      h1 {
+        font-size: 28px;
+        margin: 0 0 var(--space-4);
+        letter-spacing: 0.2px;
+        color: var(--text);
       }
-      label {
-        font-weight: bold;
+      h2,
+      h3 {
+        margin: var(--space-4) 0 var(--space-3);
+        color: var(--text);
       }
+
+      .grid {
+        display: grid;
+        gap: var(--space-4);
+        grid-template-columns: 1fr;
+      }
+      @media (min-width: 980px) {
+        .grid {
+          grid-template-columns: 1fr 1fr;
+        }
+      }
+
+      .card {
+        background: var(--card);
+        border-radius: var(--radius);
+        box-shadow: var(--shadow);
+        padding: var(--space-4);
+      }
+
+      .section-title {
+        margin: 0 0 var(--space-3);
+        font-size: var(--font-lg);
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        color: var(--text);
+      }
+
+      .form-row {
+        margin-bottom: var(--space-3);
+      }
+      .form-row label {
+        display: block;
+        font-weight: 600;
+        margin-bottom: 6px;
+        color: var(--text);
+      }
+      .form-row input,
+      .form-row select,
+      .form-row button {
+        font-size: var(--font-md);
+      }
+      .form-row input,
+      .form-row select {
+        width: 100%;
+        padding: 10px 12px;
+        border-radius: 10px;
+        border: 1px solid #d1d5db;
+        background: #ffffff;
+        color: var(--text);
+        transition: all 0.2s ease;
+      }
+      .form-row input:focus,
+      .form-row select:focus {
+        outline: none;
+        border-color: var(--ring);
+        box-shadow: 0 0 0 3px rgba(147, 197, 253, 0.35);
+      }
+
+      .btns {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+      .btn {
+        padding: 10px 14px;
+        border-radius: 10px;
+        border: 1px solid #c7cdd8;
+        background: #e9eef6;
+        color: #0f172a;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        font-weight: 500;
+      }
+      .btn:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+      }
+      .btn:focus {
+        outline: none;
+        box-shadow: 0 0 0 3px rgba(147, 197, 253, 0.35);
+      }
+      .btn.primary {
+        background: var(--primary);
+        color: #fff;
+        border-color: var(--primary-600);
+      }
+      .btn.primary:hover {
+        background: var(--primary-600);
+      }
+      .btn.danger {
+        background: var(--danger);
+        color: #fff;
+        border-color: var(--danger-600);
+      }
+      .btn.danger:hover {
+        background: var(--danger-600);
+      }
+
+      pre#output {
+        background: #0b1221;
+        color: #e5e7eb;
+        border-radius: 10px;
+        padding: var(--space-4);
+        font-size: 12px;
+        max-height: 360px;
+        overflow: auto;
+        box-shadow: var(--shadow);
+        line-height: 1.5;
+      }
+
       .user-card {
-        background: #fff;
-        border-radius: 8px;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-        margin: 16px 0;
-        padding: 16px 24px;
-        max-width: 500px;
+        background: var(--card);
+        border-radius: 14px;
+        box-shadow: var(--shadow);
+        padding: var(--space-4);
+        margin: var(--space-3) 0;
+        max-width: none;
       }
       .user-card h4 {
-        margin: 0 0 8px 0;
-        color: #2a5d9f;
-        font-size: 1.2em;
-        letter-spacing: 1px;
+        color: var(--primary);
+        letter-spacing: 0.4px;
+        margin: 0 0 12px 0;
       }
       .user-job-list {
         list-style: none;
@@ -48,127 +192,373 @@
         margin: 0;
       }
       .user-job-list li {
-        padding: 6px 0;
-        border-bottom: 1px solid #eee;
-        font-size: 1em;
+        padding: 8px 0;
+        border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+        font-size: var(--font-sm);
       }
       .user-job-list li:last-child {
         border-bottom: none;
       }
+
+      .modal-backdrop {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.35);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+        animation: fadeIn 0.15s ease-out both;
+      }
+      .modal {
+        width: min(520px, 92vw);
+        background: var(--card);
+        border-radius: var(--radius);
+        box-shadow: var(--shadow);
+        overflow: hidden;
+        font-size: 14px;
+        transform: translateY(8px);
+        animation: slideIn 0.18s ease-out both;
+      }
+      @keyframes fadeIn {
+        from {
+          opacity: 0;
+        }
+        to {
+          opacity: 1;
+        }
+      }
+      @keyframes slideIn {
+        from {
+          opacity: 0;
+          transform: translateY(12px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+      .modal header {
+        padding: 12px 16px;
+        background: var(--primary);
+        color: #fff;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .modal header h4 {
+        margin: 0;
+        font-size: 16px;
+        letter-spacing: 0.5px;
+      }
+      .modal header button {
+        background: transparent;
+        border: none;
+        color: #fff;
+        font-size: 18px;
+        cursor: pointer;
+        padding: 4px;
+        border-radius: 4px;
+        transition: background-color 0.2s ease;
+      }
+      .modal header button:hover {
+        background: rgba(255, 255, 255, 0.1);
+      }
+      .modal .content {
+        padding: 16px;
+      }
+      .modal .row {
+        margin: 10px 0;
+      }
+      .modal .row label {
+        font-weight: 600;
+        display: block;
+        margin-bottom: 6px;
+        color: var(--text);
+      }
+      .modal .row select,
+      .modal .row input {
+        width: 100%;
+        padding: 8px;
+        font-size: 14px;
+        border: 1px solid #d1d5db;
+        border-radius: 8px;
+        background: #ffffff;
+        color: var(--text);
+      }
+      .modal .actions {
+        display: flex;
+        gap: 10px;
+        justify-content: flex-end;
+        padding: 12px 16px;
+        background: rgba(148, 163, 184, 0.12);
+      }
+      .modal .actions button {
+        padding: 8px 14px;
+        font-size: 14px;
+        cursor: pointer;
+        border-radius: 6px;
+        border: 1px solid #ddd;
+        transition: all 0.2s ease;
+      }
+      .modal .actions .danger {
+        background: var(--danger);
+        color: #fff;
+        border-color: var(--danger-600);
+      }
+      .modal .actions .danger:hover {
+        background: var(--danger-600);
+      }
+      .modal .hint {
+        color: var(--muted);
+        font-size: 12px;
+        margin-top: 6px;
+        line-height: 1.4;
+      }
+      .modal .warn {
+        color: var(--danger);
+        font-weight: 600;
+      }
+
+      .hr {
+        height: 1px;
+        background: rgba(148, 163, 184, 0.35);
+        margin: var(--space-4) 0;
+        border: none;
+      }
+
+      .toast {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        background: var(--card);
+        color: var(--text);
+        padding: 12px 16px;
+        border-radius: 8px;
+        box-shadow: var(--shadow);
+        z-index: 10000;
+        transform: translateX(100%);
+        transition: transform 0.3s ease;
+        max-width: 300px;
+      }
+      .toast.show {
+        transform: translateX(0);
+      }
+      .toast.success {
+        border-left: 4px solid #10b981;
+      }
+      .toast.error {
+        border-left: 4px solid var(--danger);
+      }
+      .toast.info {
+        border-left: 4px solid var(--primary);
+      }
+
+      #imagePreviewContainer {
+        border: 1px solid rgba(148, 163, 184, 0.3);
+        padding: 12px;
+        border-radius: 8px;
+        background: rgba(148, 163, 184, 0.05);
+        text-align: center;
+      }
+      #imagePreviewContainer img {
+        max-width: 100%;
+        max-height: 200px;
+        border-radius: 6px;
+        display: block;
+        margin: 0 auto;
+      }
     </style>
   </head>
   <body>
-    <h1>Google 試算表 CSV 轉換 & Firebase 上傳</h1>
+    <div class="container">
+      <h1>Google 試算表 CSV 轉換 & Firebase 上傳</h1>
 
-    <!-- Google Sheet 相關 & 圖片網址上傳 -->
-    <div style="display: flex; gap: 40px">
-      <!-- 左半邊：Google Sheet 解析 -->
-      <div style="flex: 1">
-        <label>(莒光教會)試算表網址 / Sheet ID：</label><br />
-        <input
-          type="text"
-          id="urlInput"
-          style="width: 100%"
-          placeholder="貼上 Google 試算表網址或輸入 Sheet ID"
-          value="https://docs.google.com/spreadsheets/d/1MiJOg52vv4ydrZpx6QxhfYy96Fy0uCZs/edit?gid=1775042568#gid=1775042568"
-        />
-        <button id="parseButton">解析網址</button>
-        <br />
-        <label>Sheet ID：</label>
-        <input
-          type="text"
-          id="sheetIdInput"
-          placeholder="sheetId"
-          style="width: 60%"
-        />
-        <br />
-        <label>gid：</label>
-        <input type="text" id="gidInput" placeholder="gid" style="width: 60%" />
-        <button id="fetchButton">抓取資料並解析</button>
-      </div>
-
-      <!-- 右半邊：圖片網址上傳 -->
-      <div style="flex: 1">
-        <h3 style="margin-top: 0">上傳圖片網址至 Firebase</h3>
-        <label>請輸入圖片網址：</label><br />
-        <div style="display: flex; gap: 5px; margin-bottom: 10px">
-          <input
-            type="url"
-            id="imageUrlInput"
-            placeholder="https://example.com/image.jpg"
-            style="flex: 1"
-          />
-          <button id="previewImageBtn" style="padding: 8px 12px">
-            檢視圖片
-          </button>
-        </div>
-
-        <!-- 圖片預覽區域 -->
-        <div
-          id="imagePreviewContainer"
-          style="display: none; margin-bottom: 10px; text-align: center"
-        >
-          <div
-            style="
-              border: 1px solid #ddd;
-              padding: 10px;
-              border-radius: 4px;
-              background: #f9f9f9;
-            "
-          >
-            <img
-              id="previewImage"
-              style="max-width: 100%; max-height: 200px; border-radius: 4px"
+      <div class="grid">
+        <!-- 左：Google Sheet 解析 -->
+        <div class="card">
+          <h3 class="section-title">📊 Google 試算表解析</h3>
+          <div class="form-row">
+            <label for="urlInput">(莒光教會)試算表網址 / Sheet ID</label>
+            <input
+              type="text"
+              id="urlInput"
+              placeholder="貼上 Google 試算表網址或輸入 Sheet ID"
+              value="https://docs.google.com/spreadsheets/d/1MiJOg52vv4ydrZpx6QxhfYy96Fy0uCZs/edit?gid=1775042568#gid=1775042568"
             />
-            <div style="margin-top: 5px; font-size: 0.9em; color: #666">
-              圖片預覽
-            </div>
+          </div>
+          <div class="btns">
+            <button id="parseButton" class="btn">解析網址</button>
+          </div>
+          <div class="form-row">
+            <label for="sheetIdInput">Sheet ID</label>
+            <input type="text" id="sheetIdInput" placeholder="sheetId" />
+          </div>
+          <div class="form-row">
+            <label for="gidInput">gid</label>
+            <input type="text" id="gidInput" placeholder="gid" />
+          </div>
+          <div class="btns">
+            <button id="fetchButton" class="btn primary">抓取資料並解析</button>
           </div>
         </div>
 
-        <label>請選擇上傳類型：</label><br />
-        <select
-          id="uploadTypeSelect"
-          style="width: 100%; padding: 8px; margin: 5px 0; font-size: 1em"
-        >
-          <option value="schedule">安排表</option>
-          <option value="中級班">中級班</option>
-          <option value="信仰造就班">信仰造就班</option>
-          <option value="初級班">初級班</option>
-          <option value="少年班">少年班</option>
-          <option value="幼兒班">幼兒班</option>
-          <option value="幼年班">幼年班</option>
-        </select>
-        <br />
+        <!-- 右：圖片網址上傳 -->
+        <div class="card">
+          <h3 class="section-title">🖼️ 上傳圖片網址至 Firebase</h3>
+          <div class="form-row">
+            <label for="imageUrlInput">圖片網址</label>
+            <input
+              type="url"
+              id="imageUrlInput"
+              placeholder="https://example.com/image.jpg"
+            />
+          </div>
+          <div class="btns">
+            <button id="previewImageBtn" class="btn">檢視圖片</button>
+          </div>
 
-        <div id="monthSelectContainer">
-          <label>請選擇年月：</label><br />
-          <select
-            id="imageMonthSelect"
-            style="width: 100%; padding: 8px; margin: 5px 0; font-size: 1em"
-          >
-            <!-- 動態生成選項 -->
-          </select>
-          <br />
+          <!-- 圖片預覽區域 -->
+          <div id="imagePreviewContainer" style="display: none">
+            <img id="previewImage" />
+            <div style="margin-top: 8px; font-size: 0.9em; color: var(--muted)">
+              圖片預覽
+            </div>
+          </div>
+
+          <div class="form-row">
+            <label for="uploadTypeSelect">上傳類型</label>
+            <select id="uploadTypeSelect">
+              <option value="schedule">安排表</option>
+              <option value="中級班">中級班</option>
+              <option value="信仰造就班">信仰造就班</option>
+              <option value="初級班">初級班</option>
+              <option value="少年班">少年班</option>
+              <option value="幼兒班">幼兒班</option>
+              <option value="幼年班">幼年班</option>
+            </select>
+          </div>
+
+          <div id="monthSelectContainer" class="form-row">
+            <label for="imageMonthSelect">選擇年月</label>
+            <select id="imageMonthSelect">
+              <!-- 動態生成選項 -->
+            </select>
+          </div>
+
+          <div class="btns">
+            <button id="uploadImageBtn" class="btn primary">
+              上傳圖片網址至 Firebase
+            </button>
+          </div>
         </div>
-        <button id="uploadImageBtn">上傳圖片網址至 Firebase</button>
+      </div>
+
+      <div class="hr"></div>
+
+      <!-- 上傳工作表 -->
+      <div class="card">
+        <h3 class="section-title">📤 上傳工作表至 Firebase</h3>
+        <div class="form-row">
+          <label for="monthInput">月份 (格式：yyyymm)</label>
+          <input type="text" id="monthInput" placeholder="202503" />
+        </div>
+        <div class="btns">
+          <button id="uploadBtn" class="btn primary">
+            上傳工作表至 Firebase
+          </button>
+          <button id="openDeleteMenuBtn" class="btn danger">
+            開啟刪除功能選單
+          </button>
+        </div>
+      </div>
+
+      <div class="grid">
+        <div class="card">
+          <h3 class="section-title">📋 解析後的表格 (JSON)</h3>
+          <pre id="output">尚未解析...</pre>
+        </div>
+
+        <div class="card">
+          <h3 class="section-title">👥 使用者工作情形</h3>
+          <div id="userJobs">
+            <div style="text-align: center; color: var(--muted); padding: 20px">
+              尚未產生工作清單
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Toast 訊息系統 -->
+      <div id="toast" class="toast" aria-live="polite"></div>
+    </div>
+    <!-- /.container 結束 -->
+
+    <!-- Delete Menu Modal -->
+    <div id="deleteModalBackdrop" class="modal-backdrop" aria-hidden="true">
+      <div
+        class="modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="deleteModalTitle"
+      >
+        <header>
+          <h4 id="deleteModalTitle">刪除功能選單</h4>
+          <button id="deleteModalCloseBtn" title="關閉">✕</button>
+        </header>
+        <div class="content">
+          <div class="row">
+            <label for="deleteModeSelect">選擇刪除類型</label>
+            <select id="deleteModeSelect">
+              <option value="scheduleData">刪除「安排表資料」（需年月）</option>
+              <option value="scheduleImage">
+                刪除「安排表圖片」（需年月）
+              </option>
+              <option value="classImage">刪除「班級圖片」（選班級）</option>
+            </select>
+            <div class="hint">
+              <div><strong>資料路徑對照：</strong></div>
+              <div>安排表資料：<code>line/schedule/jgtjc/{yyyymm}</code></div>
+              <div>
+                安排表圖片：<code
+                  >line/schedule/jgtjc/schedule_image/{yyyymm}</code
+                >
+              </div>
+              <div>
+                班級圖片：<code>line/schedule/jgtjc/class/{班級名}</code>
+              </div>
+            </div>
+          </div>
+
+          <div class="row" id="deleteMonthRow">
+            <label for="deleteMonthInput2">指定月份 (yyyymm)</label>
+            <input type="text" id="deleteMonthInput2" placeholder="202503" />
+          </div>
+
+          <div class="row" id="deleteClassRow" style="display: none">
+            <label for="deleteClassSelect">選擇班級</label>
+            <select id="deleteClassSelect">
+              <!-- 依你上傳時使用的班級選項同步 -->
+              <option value="中級班">中級班</option>
+              <option value="信仰造就班">信仰造就班</option>
+              <option value="初級班">初級班</option>
+              <option value="少年班">少年班</option>
+              <option value="幼兒班">幼兒班</option>
+              <option value="幼年班">幼年班</option>
+            </select>
+            <div class="hint">
+              此操作會刪除該班級目前儲存在資料庫的圖片網址。
+            </div>
+          </div>
+
+          <div class="hint warn">⚠️ 刪除為不可逆操作，請再次確認！</div>
+        </div>
+        <div class="actions">
+          <button id="deleteModalCancelBtn">取消</button>
+          <button id="doDeleteBtn" class="danger">刪除</button>
+        </div>
       </div>
     </div>
-    <br />
-
-    <!-- 解析結果顯示 -->
-    <h3>解析後的表格 (JSON)：</h3>
-    <pre id="output">尚未解析...</pre>
-
-    <!-- Firebase 上傳功能 -->
-    <hr />
-    <h3>上傳工作表至 Firebase</h3>
-    <label>請輸入月份 (格式：yyyymm)：</label><br />
-    <input type="text" id="monthInput" placeholder="202503" />
-    <button id="uploadBtn">上傳工作表至 Firebase</button>
-
-    <h3>使用者工作情形：</h3>
-    <div id="userJobs"></div>
 
     <script>
       /*******************************************************
@@ -320,6 +710,34 @@
 
         console.log("處理清掃區域後的結果：", workSheet);
         return workSheet;
+      }
+
+      /*******************************************************
+       * JGC 特化的人名切分函式
+       *******************************************************/
+      /**
+       * JGC 特化的人名切分：
+       * - 若整串剛好是「字 空格 字」（兩個 Han 字中間一個空格），視為單一人名，移除空格。
+       * - 其他情況：以「∣」或空白切分多位人名。
+       * - 自動去除多餘空白。
+       */
+      function splitNamesJGC(cellVal) {
+        // 標準化空白：多空白 -> 單空白；前後去空白
+        let s = cellVal.trim().replace(/\s+/g, " ");
+
+        // 特例：「字 空格 字」=> 單一人名（兩個漢字中間一個空格）
+        // 使用 Unicode Script=Han 偵測中文漢字
+        const twoHanWithOneSpace = /^[\p{Script=Han}]\s[\p{Script=Han}]$/u;
+        if (twoHanWithOneSpace.test(s)) {
+          return [s.replace(" ", "")]; // 把中間空格移除
+        }
+
+        // 一般情況：以 ∣ 或空白切分
+        const parts = s
+          .split(/[∣\s]+/)
+          .map((x) => x.trim())
+          .filter(Boolean);
+        return parts;
       }
 
       /*******************************************************
@@ -588,21 +1006,15 @@
                 const cellVal = table[i][j].trim();
                 if (cellVal === "" || cellVal === "-") continue;
 
-                // 多人分配
-                if (cellVal.includes("∣") || cellVal.includes(" ")) {
-                  // 先按 ∣ 分割，再按空格分割
-                  let multiplePersons = [];
-                  if (cellVal.includes("∣")) {
-                    multiplePersons = cellVal.split("∣");
-                  } else {
-                    multiplePersons = cellVal.split(" ");
-                  }
-
+                // 多人分配（JGC 特化）
+                if (/\s|∣/.test(cellVal)) {
+                  const multiplePersons = splitNamesJGC(cellVal);
                   multiplePersons.forEach((personName) => {
-                    personName = personName.trim().replace(/\s+/g, "");
-                    if (!personName || personName === "") return;
-                    if (!workSheet[personName]) workSheet[personName] = [];
-                    workSheet[personName].push({
+                    const clean = personName.trim().replace(/\s+/g, "");
+                    if (!clean) return;
+                    const key = clean;
+                    if (!workSheet[key]) workSheet[key] = [];
+                    workSheet[key].push({
                       date: dateVal,
                       weekDay: hasWeekday
                         ? table[i][1]
@@ -615,10 +1027,11 @@
                 } else {
                   // 單一負責人
                   const cleanName = cellVal.trim().replace(/\s+/g, "");
-                  if (!workSheet[cleanName]) {
-                    workSheet[cleanName] = [];
+                  const key = cleanName;
+                  if (!workSheet[key]) {
+                    workSheet[key] = [];
                   }
-                  workSheet[cleanName].push({
+                  workSheet[key].push({
                     date: dateVal,
                     weekDay: hasWeekday
                       ? table[i][1]
@@ -724,6 +1137,20 @@
        * 全域變數：儲存「最終的轉換後工作表物件」
        *******************************************************/
       let finalTransformedSheet = null;
+
+      /*******************************************************
+       * Toast 訊息系統
+       *******************************************************/
+      function showToast(message, type = "info", duration = 3000) {
+        const toast = document.getElementById("toast");
+        toast.textContent = message;
+        toast.className = `toast ${type}`;
+        toast.classList.add("show");
+
+        setTimeout(() => {
+          toast.classList.remove("show");
+        }, duration);
+      }
 
       /*******************************************************
        * 初始化圖片上傳功能：生成年月下拉選單
@@ -995,6 +1422,105 @@
         });
 
       /*******************************************************
+       * 刪除功能選單（Modal）邏輯
+       *******************************************************/
+      (function setupDeleteMenu() {
+        const backdrop = document.getElementById("deleteModalBackdrop");
+        const openBtn = document.getElementById("openDeleteMenuBtn");
+        const closeBtn = document.getElementById("deleteModalCloseBtn");
+        const cancelBtn = document.getElementById("deleteModalCancelBtn");
+        const doDeleteBtn = document.getElementById("doDeleteBtn");
+
+        const modeSelect = document.getElementById("deleteModeSelect");
+        const monthRow = document.getElementById("deleteMonthRow");
+        const monthInput = document.getElementById("deleteMonthInput2");
+        const classRow = document.getElementById("deleteClassRow");
+        const classSelect = document.getElementById("deleteClassSelect");
+
+        function openModal() {
+          backdrop.style.display = "flex";
+          backdrop.setAttribute("aria-hidden", "false");
+          // 預設帶入畫面上已有的月份選擇（若有）
+          const monthFromMain =
+            document.getElementById("monthInput")?.value?.trim() ||
+            document.getElementById("imageMonthSelect")?.value?.trim() ||
+            "";
+          if (!monthInput.value && monthFromMain)
+            monthInput.value = monthFromMain;
+        }
+        function closeModal() {
+          backdrop.style.display = "none";
+          backdrop.setAttribute("aria-hidden", "true");
+        }
+
+        // 顯示欄位隨模式切換
+        function refreshFields() {
+          const mode = modeSelect.value;
+          if (mode === "scheduleData" || mode === "scheduleImage") {
+            monthRow.style.display = "block";
+            classRow.style.display = "none";
+          } else if (mode === "classImage") {
+            monthRow.style.display = "none";
+            classRow.style.display = "block";
+          }
+        }
+
+        // 外層互動
+        openBtn.addEventListener("click", openModal);
+        closeBtn.addEventListener("click", closeModal);
+        cancelBtn.addEventListener("click", closeModal);
+        backdrop.addEventListener("click", (e) => {
+          if (e.target === backdrop) closeModal();
+        });
+        document.addEventListener("keydown", (e) => {
+          if (e.key === "Escape" && backdrop.style.display === "flex")
+            closeModal();
+        });
+        modeSelect.addEventListener("change", refreshFields);
+        refreshFields();
+
+        // 實際刪除
+        doDeleteBtn.addEventListener("click", async function () {
+          const mode = modeSelect.value;
+
+          try {
+            if (mode === "scheduleData") {
+              const m = monthInput.value.trim();
+              if (!/^\d{6}$/.test(m))
+                return alert("請輸入正確格式的月份 (yyyymm)");
+              const path = `line/schedule/jgtjc/${m}`;
+              if (!confirm(`確定刪除「安排表資料」？\n路徑：${path}`)) return;
+              await database.ref(path).remove();
+              alert(`已刪除：${path}`);
+            } else if (mode === "scheduleImage") {
+              const m = monthInput.value.trim();
+              if (!/^\d{6}$/.test(m))
+                return alert("請輸入正確格式的月份 (yyyymm)");
+              const path = `line/schedule/jgtjc/schedule_image/${m}`;
+              if (!confirm(`確定刪除「安排表圖片網址」？\n路徑：${path}`))
+                return;
+              await database.ref(path).remove();
+              alert(`已刪除：${path}`);
+            } else if (mode === "classImage") {
+              const cls = classSelect.value;
+              if (!cls) return alert("請選擇班級");
+              const path = `line/schedule/jgtjc/class/${cls}`;
+              if (!confirm(`確定刪除「${cls}」的圖片網址？\n路徑：${path}`))
+                return;
+              await database.ref(path).remove();
+              alert(`已刪除：${path}`);
+            } else {
+              return alert("未知的刪除模式");
+            }
+            closeModal();
+          } catch (err) {
+            alert(`刪除失敗：${err.message}`);
+            return;
+          }
+        });
+      })();
+
+      /*******************************************************
        * 事件：檢視圖片預覽
        *******************************************************/
       document
@@ -1005,7 +1531,7 @@
             .value.trim();
 
           if (!imageUrl) {
-            alert("請先輸入圖片網址！");
+            showToast("請先輸入圖片網址！", "error");
             return;
           }
 
@@ -1013,7 +1539,7 @@
           try {
             new URL(imageUrl);
           } catch (e) {
-            alert("請輸入有效的網址格式！");
+            showToast("請輸入有效的網址格式！", "error");
             return;
           }
 
