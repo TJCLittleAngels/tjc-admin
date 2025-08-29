@@ -400,6 +400,7 @@
           </div>
           <div class="btns">
             <button id="fetchButton" class="btn primary">抓取資料並解析</button>
+            <button id="openJsonModalBtn" class="btn">查看解析 JSON</button>
           </div>
         </div>
 
@@ -474,16 +475,31 @@
       </div>
 
       <div class="grid">
-        <div class="card">
-          <h3 class="section-title">📋 解析後的表格 (JSON)</h3>
-          <pre id="output">尚未解析...</pre>
-        </div>
-
+        <!-- 原本 JSON 卡片的位置 → 換成「使用者工作情形」 -->
         <div class="card">
           <h3 class="section-title">👥 使用者工作情形</h3>
+
+          <!-- 篩選器 -->
+          <div class="form-row">
+            <label for="jobFilterSelect">依工作項目篩選</label>
+            <select id="jobFilterSelect" disabled>
+              <option value="ALL">（全部工作）</option>
+            </select>
+          </div>
+
           <div id="userJobs">
             <div style="text-align: center; color: var(--muted); padding: 20px">
               尚未產生工作清單
+            </div>
+          </div>
+        </div>
+
+        <!-- 原本「使用者工作情形」的位置 → 換成「已刪除工作區域」 -->
+        <div class="card">
+          <h3 class="section-title">🗑️ 已刪除工作區域（可復原）</h3>
+          <div id="deletedJobs">
+            <div style="text-align: center; color: var(--muted); padding: 20px">
+              尚無已刪除的工作
             </div>
           </div>
         </div>
@@ -493,6 +509,41 @@
       <div id="toast" class="toast" aria-live="polite"></div>
     </div>
     <!-- /.container 結束 -->
+
+    <!-- JSON 內容檢視 Modal -->
+    <div id="jsonModalBackdrop" class="modal-backdrop" aria-hidden="true">
+      <div
+        class="modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="jsonModalTitle"
+      >
+        <header>
+          <h4 id="jsonModalTitle">解析後的表格 (JSON)</h4>
+          <button id="jsonModalCloseBtn" title="關閉">✕</button>
+        </header>
+        <div class="content">
+          <pre
+            id="jsonOutput"
+            style="
+              background: #0b1221;
+              color: #e5e7eb;
+              border-radius: 10px;
+              padding: 16px;
+              font-size: 12px;
+              max-height: 60vh;
+              overflow: auto;
+              margin: 0;
+            "
+          >
+尚未解析...</pre
+          >
+        </div>
+        <div class="actions">
+          <button id="jsonModalCloseBtn2">關閉</button>
+        </div>
+      </div>
+    </div>
 
     <!-- Delete Menu Modal -->
     <div id="deleteModalBackdrop" class="modal-backdrop" aria-hidden="true">
@@ -1138,6 +1189,197 @@
        *******************************************************/
       let finalTransformedSheet = null;
 
+      // === 刪除/復原的全域狀態 ===
+      let deletedJobsByUser = {}; // { userName: Set<jobIdString> }
+      const makeJobId = (job) => `${job.date}__${job.timeSlot}__${job.task}`; // 穩定ID
+
+      // 供 JSON Modal 使用
+      let parsedFinalTables = null; // 解析後的 Table 陣列
+
+      // 篩選狀態
+      let currentTaskFilter = "ALL";
+
+      // 依目前可見工作（排除已刪除）收集所有工作項目
+      function collectVisibleTasks() {
+        if (!finalTransformedSheet) return [];
+        const tasks = new Set();
+        for (const [user, jobs] of Object.entries(finalTransformedSheet)) {
+          const delSet = deletedJobsByUser[user] || new Set();
+          jobs.forEach((job) => {
+            if (!delSet.has(makeJobId(job))) tasks.add(job.task);
+          });
+        }
+        return Array.from(tasks).sort();
+      }
+
+      // 更新下拉選項
+      function refreshTaskFilterOptions() {
+        const sel = document.getElementById("jobFilterSelect");
+        if (!sel) return;
+        // 清空並重建
+        sel.innerHTML = `<option value="ALL">（全部工作）</option>`;
+        const tasks = collectVisibleTasks();
+        tasks.forEach((t) => {
+          const opt = document.createElement("option");
+          opt.value = t;
+          opt.textContent = t;
+          sel.appendChild(opt);
+        });
+        sel.disabled = !finalTransformedSheet || tasks.length === 0;
+        // 若目前選的值不存在了，就回到 ALL
+        const values = new Set(tasks.concat(["ALL"]));
+        if (!values.has(currentTaskFilter)) {
+          currentTaskFilter = "ALL";
+          sel.value = "ALL";
+        } else {
+          sel.value = currentTaskFilter;
+        }
+      }
+
+      function updateJsonModalContent(content) {
+        const pre = document.getElementById("jsonOutput");
+        if (!pre) return;
+        if (typeof content === "string") {
+          pre.textContent = content;
+        } else {
+          try {
+            pre.textContent = JSON.stringify(content, null, 2);
+          } catch {
+            pre.textContent = String(content ?? "（無內容）");
+          }
+        }
+      }
+
+      function ensureDeletedSet(user) {
+        if (!deletedJobsByUser[user]) deletedJobsByUser[user] = new Set();
+      }
+
+      // 過濾：把 finalTransformedSheet 中被刪除的工作排除，回傳要上傳的 payload
+      function buildUploadPayload() {
+        if (!finalTransformedSheet) return null;
+        const result = {};
+        for (const [user, jobs] of Object.entries(finalTransformedSheet)) {
+          const delSet = deletedJobsByUser[user] || new Set();
+          const kept = jobs.filter((job) => !delSet.has(makeJobId(job)));
+          if (kept.length > 0) result[user] = kept;
+        }
+        return result;
+      }
+
+      // UI：渲染使用者的「可見工作」
+      function renderUserJobs() {
+        const container = document.getElementById("userJobs");
+        container.innerHTML = "";
+        if (!finalTransformedSheet) {
+          container.innerHTML = `<div style="text-align:center;color:var(--muted);padding:20px">尚未產生工作清單</div>`;
+          // 沒資料時同步更新選單狀態
+          refreshTaskFilterOptions();
+          return;
+        }
+
+        // 先算出每位使用者的可見工作（排除已刪除）
+        const visibleByUser = {};
+        for (const [user, jobs] of Object.entries(finalTransformedSheet)) {
+          const delSet = deletedJobsByUser[user] || new Set();
+          visibleByUser[user] = jobs.filter(
+            (job) => !delSet.has(makeJobId(job))
+          );
+        }
+
+        // 若有篩選：只留下「有該工作」的使用者，但仍顯示他們的所有可見工作
+        const taskFilter = currentTaskFilter;
+        const filteredUsers = Object.entries(visibleByUser).filter(
+          ([user, jobs]) => {
+            if (taskFilter === "ALL") return true;
+            return jobs.some((j) => j.task === taskFilter);
+          }
+        );
+
+        if (filteredUsers.length === 0) {
+          container.innerHTML = `<div style="text-align:center;color:var(--muted);padding:20px">沒有符合條件的成員</div>`;
+          refreshTaskFilterOptions(); // 同步更新選單
+          return;
+        }
+
+        filteredUsers.forEach(([user, visibleJobs]) => {
+          const card = document.createElement("div");
+          card.className = "user-card";
+          const title = document.createElement("h4");
+          title.textContent = user;
+          card.appendChild(title);
+
+          if (visibleJobs.length === 0) {
+            const empty = document.createElement("div");
+            empty.textContent = "（本月無工作）";
+            card.appendChild(empty);
+          } else {
+            const ul = document.createElement("ul");
+            ul.className = "user-job-list";
+            visibleJobs.forEach((job) => {
+              const li = document.createElement("li");
+              li.innerHTML = `📅 ${job.date}｜${job.timeSlot}｜${job.task}
+                <button class="btn danger" 
+                        data-action="delete" 
+                        data-user="${user}"
+                        data-id="${makeJobId(job)}"
+                        style="float:right;padding:4px 8px;font-size:12px;">刪除</button>`;
+              ul.appendChild(li);
+            });
+            card.appendChild(ul);
+          }
+          container.appendChild(card);
+        });
+
+        // 每次重繪後，更新下拉選單（讓可選項目跟著刪除/復原變動）
+        refreshTaskFilterOptions();
+      }
+
+      // UI：渲染「已刪除工作區域」（可復原）
+      function renderDeletedJobs() {
+        const container = document.getElementById("deletedJobs");
+        container.innerHTML = "";
+
+        // 蒐集每位使用者的已刪除項目
+        const blocks = [];
+        for (const [user, jobs] of Object.entries(
+          finalTransformedSheet || {}
+        )) {
+          const delSet = deletedJobsByUser[user] || new Set();
+          const deletedList = jobs.filter((job) => delSet.has(makeJobId(job)));
+          if (deletedList.length > 0) {
+            blocks.push({ user, deletedList });
+          }
+        }
+
+        if (blocks.length === 0) {
+          container.innerHTML = `<div style="text-align:center;color:var(--muted);padding:20px">尚無已刪除的工作</div>`;
+          return;
+        }
+
+        blocks.forEach(({ user, deletedList }) => {
+          const card = document.createElement("div");
+          card.className = "user-card";
+          const title = document.createElement("h4");
+          title.textContent = `${user}（已刪除）`;
+          card.appendChild(title);
+
+          const ul = document.createElement("ul");
+          ul.className = "user-job-list";
+          deletedList.forEach((job) => {
+            const li = document.createElement("li");
+            li.innerHTML = `📅 ${job.date}｜${job.timeSlot}｜${job.task}
+              <button class="btn" 
+                      data-action="restore" 
+                      data-user="${user}"
+                      data-id="${makeJobId(job)}"
+                      style="float:right;padding:4px 8px;font-size:12px;">復原</button>`;
+            ul.appendChild(li);
+          });
+          card.appendChild(ul);
+          container.appendChild(card);
+        });
+      }
+
       /*******************************************************
        * Toast 訊息系統
        *******************************************************/
@@ -1187,7 +1429,55 @@
       document.addEventListener("DOMContentLoaded", function () {
         initializeImageUpload();
         initializeUploadTypeHandler();
+
+        // 綁定篩選下拉事件
+        const sel = document.getElementById("jobFilterSelect");
+        if (sel) {
+          sel.addEventListener("change", () => {
+            currentTaskFilter = sel.value || "ALL";
+            renderUserJobs(); // 會讀 currentTaskFilter
+          });
+        }
       });
+
+      // JSON Modal 開關
+      (function setupJsonModal() {
+        const backdrop = document.getElementById("jsonModalBackdrop");
+        const closeBtn = document.getElementById("jsonModalCloseBtn");
+        const closeBtn2 = document.getElementById("jsonModalCloseBtn2");
+        function openModal() {
+          backdrop.style.display = "flex";
+          backdrop.setAttribute("aria-hidden", "false");
+        }
+        function closeModal() {
+          backdrop.style.display = "none";
+          backdrop.setAttribute("aria-hidden", "true");
+        }
+        closeBtn.addEventListener("click", closeModal);
+        closeBtn2.addEventListener("click", closeModal);
+        backdrop.addEventListener("click", (e) => {
+          if (e.target === backdrop) closeModal();
+        });
+        document.addEventListener("keydown", (e) => {
+          if (e.key === "Escape" && backdrop.style.display === "flex")
+            closeModal();
+        });
+
+        // 「查看解析 JSON」按鈕
+        document
+          .getElementById("openJsonModalBtn")
+          .addEventListener("click", () => {
+            if (!parsedFinalTables) {
+              showToast(
+                "尚未進行資料解析，請先點擊『抓取資料並解析』。",
+                "error"
+              );
+              return;
+            }
+            updateJsonModalContent(parsedFinalTables);
+            openModal();
+          });
+      })();
 
       /*******************************************************
        * 初始化上傳類型變更處理
@@ -1248,8 +1538,7 @@
         .addEventListener("click", function () {
           const sheetId = document.getElementById("sheetIdInput").value.trim();
           const gid = document.getElementById("gidInput").value.trim();
-          const output = document.getElementById("output");
-          output.textContent = "解析中...";
+          showToast("解析中...", "info");
 
           if (!sheetId) {
             alert("請先填入 sheetId！");
@@ -1357,41 +1646,23 @@
                 finalTransformedSheet
               );
 
-              // 顯示每個使用者的工作情形
-              const userJobsDiv = document.getElementById("userJobs");
-              userJobsDiv.innerHTML = ""; // 清空
-              for (const [user, jobs] of Object.entries(
-                finalTransformedSheet
-              )) {
-                const card = document.createElement("div");
-                card.className = "user-card";
-                const title = document.createElement("h4");
-                title.textContent = user;
-                card.appendChild(title);
+              // 解析完成：重繪 UI（可刪除/復原）
+              deletedJobsByUser = {}; // 清空之前的刪除狀態
+              renderUserJobs();
+              renderDeletedJobs();
 
-                if (jobs.length === 0) {
-                  const empty = document.createElement("div");
-                  empty.textContent = "（本月無工作）";
-                  card.appendChild(empty);
-                } else {
-                  const ul = document.createElement("ul");
-                  ul.className = "user-job-list";
-                  jobs.forEach((job) => {
-                    const li = document.createElement("li");
-                    li.textContent = `📅 ${job.date}｜${job.timeSlot}｜${job.task}`;
-                    ul.appendChild(li);
-                  });
-                  card.appendChild(ul);
-                }
-                userJobsDiv.appendChild(card);
-              }
-
-              // 在畫面上顯示
-              output.textContent = JSON.stringify(finalTables, null, 2);
+              // 更新 JSON Modal 的資料
+              parsedFinalTables = finalTables;
+              updateJsonModalContent(parsedFinalTables);
+              showToast("解析完成！", "success");
             })
             .catch((error) => {
               console.error(error);
-              output.textContent = "抓取或解析資料時發生錯誤：" + error.message;
+              parsedFinalTables = null;
+              updateJsonModalContent(
+                "抓取或解析資料時發生錯誤：" + error.message
+              );
+              showToast("抓取或解析失敗", "error");
             });
         });
 
@@ -1412,11 +1683,15 @@
           }
 
           const path = `line/schedule/jgtjc/${month}`;
-          database.ref(path).set(finalTransformedSheet, function (error) {
+          const payload = buildUploadPayload();
+          if (!payload || Object.keys(payload).length === 0) {
+            return alert("目前沒有可上傳的工作（可能全部被刪除）");
+          }
+          database.ref(path).set(payload, function (error) {
             if (error) {
               alert("上傳失敗：" + error);
             } else {
-              alert("成功上傳工作表資料至 Firebase！");
+              alert("成功上傳（已自動排除已刪除的工作）！");
             }
           });
         });
@@ -1625,6 +1900,30 @@
             }
           });
         });
+
+      // 「使用者工作情形」區塊：刪除
+      document.getElementById("userJobs").addEventListener("click", (e) => {
+        const btn = e.target.closest("button[data-action='delete']");
+        if (!btn) return;
+        const user = btn.getAttribute("data-user");
+        const id = btn.getAttribute("data-id");
+        ensureDeletedSet(user);
+        deletedJobsByUser[user].add(id);
+        renderUserJobs();
+        renderDeletedJobs();
+      });
+
+      // 「已刪除工作區域」：復原
+      document.getElementById("deletedJobs").addEventListener("click", (e) => {
+        const btn = e.target.closest("button[data-action='restore']");
+        if (!btn) return;
+        const user = btn.getAttribute("data-user");
+        const id = btn.getAttribute("data-id");
+        ensureDeletedSet(user);
+        deletedJobsByUser[user].delete(id);
+        renderUserJobs();
+        renderDeletedJobs();
+      });
     </script>
   </body>
 </html>
