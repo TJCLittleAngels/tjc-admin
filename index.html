@@ -478,6 +478,36 @@
           </div>
 
           <div class="btns">
+            <button id="loadCurrentImageBtn" class="btn">
+              載入目前 Firebase 圖片
+            </button>
+          </div>
+
+          <div
+            id="currentImageContainer"
+            style="display: none; margin-top: 12px"
+          >
+            <div
+              style="font-size: 0.95em; color: var(--muted); margin-bottom: 6px"
+            >
+              目前儲存在 Firebase 的圖片
+            </div>
+            <div
+              id="currentImageBox"
+              style="
+                border: 1px solid rgba(148, 163, 184, 0.3);
+                padding: 12px;
+                border-radius: 8px;
+                background: rgba(148, 163, 184, 0.05);
+              "
+            >
+              <div style="text-align: center; color: var(--muted)">
+                尚未載入
+              </div>
+            </div>
+          </div>
+
+          <div class="btns">
             <button id="uploadImageBtn" class="btn primary">
               上傳圖片網址至 Firebase
             </button>
@@ -728,6 +758,9 @@
           localStorage.setItem("activePluginId", target.id);
         } catch {}
         showToast(`已切換到 ${target.label}`, "info");
+
+        // 切換 plugin 後自動載入目前圖片
+        loadCurrentImageFromDB();
       }
 
       // ---- 初始化：依 registry + 優先序（querystring > localStorage > default）選擇 ----
@@ -1431,6 +1464,9 @@
 
         // Plugin 選擇器事件已在 initPlugin() 中綁定
         // 綁定篩選下拉事件
+
+        // 讓使用者一打開就看到「目前 Firebase 圖片」
+        loadCurrentImageFromDB();
         const sel = document.getElementById("jobFilterSelect");
         if (sel) {
           const onSelectChange = () => {
@@ -1526,6 +1562,58 @@
         } else {
           monthSelectContainer.style.display = "none";
         }
+      }
+
+      /*******************************************************
+       * Firebase 圖片預覽工具函式
+       *******************************************************/
+      // 依畫面現況計算「目前要看的 Firebase 路徑」
+      function getCurrentImagePathByUI() {
+        const plugin = window.__PLUGIN__;
+        const uploadType = document.getElementById("uploadTypeSelect").value;
+        if (!plugin || !plugin.paths) return null;
+
+        if (uploadType === "schedule") {
+          const yyyymm = document.getElementById("imageMonthSelect").value;
+          if (!yyyymm) return null;
+          return plugin.paths.scheduleImage(yyyymm);
+        } else {
+          return plugin.paths.classImage(uploadType);
+        }
+      }
+
+      // 把某個 URL 渲染到「目前 Firebase 圖片」區塊
+      function renderCurrentImage(url, path) {
+        const wrap = document.getElementById("currentImageContainer");
+        const box = document.getElementById("currentImageBox");
+        wrap.style.display = "block";
+
+        if (!url) {
+          box.innerHTML = `
+            <div style="text-align:center; color:#ef6c00;">
+              ⚠️ 這個路徑目前沒有存到圖片網址<br>
+              <small style="color:#666">路徑：${
+                path || "(未知)"
+              }<br>你可以先上傳一張後再查看</small>
+            </div>
+          `;
+          return;
+        }
+
+        // 與你預覽新圖時相同的「成功/失敗」視覺提示
+        box.innerHTML = `
+          <div style="border: 1px solid #2196f3; padding: 10px; border-radius: 4px; background: #e3f2fd;">
+            <img 
+              src="${url}" 
+              style="max-width: 100%; max-height: 200px; border-radius: 4px; display: block; margin: 0 auto;" 
+              onload="this.parentElement.style.borderColor='#4caf50'; this.parentElement.style.backgroundColor='#e8f5e8'; this.nextElementSibling.innerHTML='✅ 讀取成功<br><small style=\\'color:#666;\\'>路徑：${path}</small><br><small style=\\'color:#666;\\'>網址：${url}</small>'; this.nextElementSibling.style.color='#2e7d32';"
+              onerror="this.style.display='none'; this.parentElement.style.borderColor='#ff9800'; this.parentElement.style.backgroundColor='#fff3e0'; this.nextElementSibling.innerHTML='⚠️ 圖片載入失敗（可能是外站限制 hotlink）<br><small>路徑：${path}</small><br><small>網址：${url}</small>'; this.nextElementSibling.style.color='#ef6c00';"
+            />
+            <div style="margin-top: 5px; font-size: 0.9em; color: #1976d2; text-align: center;">
+              🔄 嘗試載入 Firebase 目前圖片...
+            </div>
+          </div>
+        `;
       }
 
       /*******************************************************
@@ -1866,6 +1954,58 @@
           `;
         });
 
+      // ====== ★ 從 Realtime DB 讀取現有圖片網址並預覽 ======
+      async function loadCurrentImageFromDB() {
+        const path = getCurrentImagePathByUI();
+        if (!path) {
+          showToast("請先選擇正確的類型與年月/班級！", "error");
+          return;
+        }
+
+        try {
+          showToast("讀取中...", "info");
+          // 使用 once('value') 讀取資料
+          const snap = await database.ref(path).once("value");
+          const val = snap.val();
+
+          // val 可能是字串（單一 URL）或物件（你之後想擴充多欄位的情況）
+          const url = typeof val === "string" ? val : null;
+          renderCurrentImage(url, path);
+
+          if (url) {
+            showToast("已載入目前圖片網址", "success");
+          } else {
+            showToast("這個路徑目前沒有圖片網址", "info");
+          }
+        } catch (err) {
+          console.error(err);
+          showToast("讀取失敗：" + err.message, "error");
+        }
+      }
+
+      // 綁定「載入目前圖片」按鈕
+      document
+        .getElementById("loadCurrentImageBtn")
+        .addEventListener("click", loadCurrentImageFromDB);
+
+      // 當類型或月份改變時，自動刷新（可選）
+      document
+        .getElementById("uploadTypeSelect")
+        .addEventListener("change", () => {
+          // 切換顯示 schedule/class 的 UI 你已處理；這裡順手清畫面 & 嘗試讀
+          document.getElementById("currentImageContainer").style.display =
+            "none";
+          loadCurrentImageFromDB();
+        });
+
+      document
+        .getElementById("imageMonthSelect")
+        .addEventListener("change", () => {
+          document.getElementById("currentImageContainer").style.display =
+            "none";
+          loadCurrentImageFromDB();
+        });
+
       // ====== ★ 上傳圖片（使用 plugin.paths）======
       document
         .getElementById("uploadImageBtn")
@@ -1923,6 +2063,8 @@
               document.getElementById("imageUrlInput").value = "";
               document.getElementById("imagePreviewContainer").style.display =
                 "none";
+              // 上傳成功後自動重新載入目前圖片
+              loadCurrentImageFromDB();
             }
           });
         });
