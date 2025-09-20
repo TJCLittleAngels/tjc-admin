@@ -8,6 +8,7 @@
     <!-- Firebase SDK (舊程式碼參考) -->
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-storage-compat.js"></script>
     <style>
       :root {
         /* 固定使用淺色系 */
@@ -512,6 +513,27 @@
               上傳圖片網址至 Firebase
             </button>
           </div>
+
+          <!-- 直接上傳檔案到 Storage（可選） -->
+          <div class="hr" style="margin-top: 16px"></div>
+          <h4 class="section-title" style="margin-top: 0">
+            或：直接上傳圖片檔到 Storage
+          </h4>
+          <div class="form-row">
+            <input type="file" id="imageFileInput" accept="image/*" />
+          </div>
+          <div class="btns">
+            <button id="uploadFileToStorageBtn" class="btn primary">
+              上傳檔案到 Storage 並寫回 DB
+            </button>
+          </div>
+          <div
+            id="storageUploadHint"
+            style="font-size: 12px; color: var(--muted); margin-top: 6px"
+          >
+            會依畫面上的「上傳類型 / 年月或班級」決定 Storage
+            路徑，成功後把可瀏覽網址寫回既有 DB 路徑。
+          </div>
         </div>
       </div>
 
@@ -828,6 +850,7 @@
       };
       firebase.initializeApp(firebaseConfig);
       const database = firebase.database();
+      const storage = firebase.storage();
 
       // 供 plugin [前處理] 填回月份用（可選）
       function setMonthInput(val) {
@@ -1582,6 +1605,89 @@
         }
       }
 
+      // 新增：依目前 UI，決定「Storage 檔案放哪個路徑」
+      function getStorageObjectPathByUI(file) {
+        const plugin = window.__PLUGIN__;
+        const uploadType = document.getElementById("uploadTypeSelect").value;
+
+        // 你目前 Storage 有個 public/ 目錄；我們把檔案整理到子資料夾
+        // 命名：避免覆蓋，補上時間戳記
+        const ts = Date.now();
+        const safeExt = (file?.name?.split(".").pop() || "jpg").toLowerCase();
+
+        if (uploadType === "schedule") {
+          const yyyymm = document.getElementById("imageMonthSelect").value;
+          // e.g. public/schedule/202503/202503-1737112233445.jpg
+          return `public/schedule/${yyyymm}/${yyyymm}-${ts}.${safeExt}`;
+        } else {
+          // e.g. public/class/中級班/中級班-1737112233445.jpg
+          return `public/class/${uploadType}/${uploadType}-${ts}.${safeExt}`;
+        }
+      }
+
+      // 上傳檔案到 Storage → 取得 downloadURL → 寫回你原本的 DB 路徑
+      async function uploadSelectedFileAndWriteDB() {
+        const fileInput = document.getElementById("imageFileInput");
+        const file = fileInput?.files?.[0];
+        if (!file) {
+          showToast("請先選擇一張圖片檔！", "error");
+          return;
+        }
+
+        // 1) 決定 Storage 物件路徑
+        const objectPath = getStorageObjectPathByUI(file);
+        if (!objectPath) {
+          showToast("請先選好上傳類型與年月/班級！", "error");
+          return;
+        }
+
+        // 2) 決定 DB 路徑（你原本用的）
+        const dbPath = getCurrentImagePathByUI();
+        if (!dbPath) {
+          showToast("無法取得 DB 路徑，請確認上傳類型與年月/班級。", "error");
+          return;
+        }
+
+        try {
+          showToast("開始上傳檔案...", "info");
+
+          // 3) 上傳到 Storage（含 contentType）
+          const storageRef = storage.ref(objectPath);
+          const metadata = { contentType: file.type || "image/jpeg" };
+
+          // 使用 put（compat）或 putString/base64 皆可；這裡用 put 檔案物件
+          const task = storageRef.put(file, metadata);
+
+          // 可選：監聽進度
+          task.on(
+            "state_changed",
+            (snap) => {
+              // 你要顯示進度條可以在這裡處理
+              // const pct = Math.round((snap.bytesTransferred / snap.totalBytes) * 100);
+              // console.log('Upload', pct + '%');
+            },
+            (err) => {
+              showToast("上傳失敗：" + err.message, "error");
+            },
+            async () => {
+              // 4) 成功 → 拿到 downloadURL
+              const downloadURL = await task.snapshot.ref.getDownloadURL();
+
+              // 5) 寫回你原本的 DB 路徑（保持和貼網址流程一致）
+              await database.ref(dbPath).set(downloadURL);
+
+              showToast("上傳完成！已寫回圖片網址。", "success");
+
+              // 清空檔案選擇並刷新右側「目前 Firebase 圖片」
+              document.getElementById("imageFileInput").value = "";
+              loadCurrentImageFromDB();
+            }
+          );
+        } catch (e) {
+          showToast("上傳失敗：" + e.message, "error");
+        }
+      }
+
       // 把某個 URL 渲染到「目前 Firebase 圖片」區塊
       function renderCurrentImage(url, path) {
         const wrap = document.getElementById("currentImageContainer");
@@ -1987,6 +2093,11 @@
       document
         .getElementById("loadCurrentImageBtn")
         .addEventListener("click", loadCurrentImageFromDB);
+
+      // 綁定「上傳檔案到 Storage」按鈕
+      document
+        .getElementById("uploadFileToStorageBtn")
+        .addEventListener("click", uploadSelectedFileAndWriteDB);
 
       // 當類型或月份改變時，自動刷新（可選）
       document
