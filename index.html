@@ -105,7 +105,7 @@
       .form-row button {
         font-size: var(--font-md);
       }
-      .form-row input,
+      .form-row input:not([type="checkbox"]):not([type="radio"]),
       .form-row select {
         width: 100%;
         padding: 10px 12px;
@@ -369,6 +369,26 @@
         display: block;
         margin: 0 auto;
       }
+
+      /* 靈恩佈道會跨月勾選框樣式 */
+      .form-row.evg-cross {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .form-row.evg-cross label {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        margin: 0;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      .form-row.evg-cross input[type="checkbox"] {
+        width: auto;
+        margin: 0;
+        transform: scale(1.05);
+      }
     </style>
   </head>
   <body>
@@ -462,6 +482,7 @@
             <label for="uploadTypeSelect">上傳類型</label>
             <select id="uploadTypeSelect">
               <option value="schedule">安排表</option>
+              <option value="evangelistic">靈恩佈道會</option>
               <option value="中級班">中級班</option>
               <option value="信仰造就班">信仰造就班</option>
               <option value="初級班">初級班</option>
@@ -476,6 +497,37 @@
             <select id="imageMonthSelect">
               <!-- 動態生成選項 -->
             </select>
+          </div>
+
+          <div
+            id="evangelisticFields"
+            class="form-row"
+            style="display: none; margin-top: 10px"
+          >
+            <label style="display: block; font-weight: 600; margin-bottom: 8px"
+              >靈恩佈道會設定</label
+            >
+
+            <div class="form-row">
+              <label for="evgMonthStart">活動月份（起）</label>
+              <select id="evgMonthStart"></select>
+            </div>
+
+            <div class="form-row evg-cross">
+              <label>
+                <input type="checkbox" id="evgCrossMonth" />
+                跨月（活動為期一週可能跨月）
+              </label>
+            </div>
+
+            <div
+              class="hint"
+              style="color: var(--muted); font-size: 12px; margin-top: 6px"
+            >
+              儲存路徑：<code>.../evangelistic</code>；格式：<code
+                >{ url, months[] }</code
+              >
+            </div>
           </div>
 
           <div class="btns">
@@ -856,6 +908,70 @@
       function setMonthInput(val) {
         const el = document.getElementById("monthInput");
         if (el && val) el.value = val;
+      }
+
+      /*******************************************************
+       * 靈恩佈道會相關工具函式
+       *******************************************************/
+      // 從 plugin 的 scheduleImage 路徑回推出根 base，確保與 class 同層
+      function getPluginRootBase() {
+        const plugin = window.__PLUGIN__;
+        if (!plugin?.paths?.scheduleImage) return "line/schedule/jgtjc";
+        const ex = plugin.paths.scheduleImage("209901");
+        const m = ex.match(/^(.*)\/schedule_image\/[^/]+$/);
+        return m ? m[1] : "line/schedule/jgtjc";
+      }
+
+      // DB：固定寫在 .../evangelistic（不分年）
+      function getEvangelisticDbPath() {
+        return `${getPluginRootBase()}/evangelistic`;
+      }
+
+      // Storage：自訂一個目錄，方便管理（不影響 DB 結構）
+      function getEvangelisticStoragePath(file) {
+        const ts = Date.now();
+        const ext = (file?.name?.split(".").pop() || "jpg").toLowerCase();
+        const year = new Date().getFullYear();
+        return `public/evangelistic/${year}/${year}-${ts}.${ext}`;
+      }
+
+      // 產生 YYYYMM 選項（-3 ~ +6 月，與你現有一致）
+      function populateYearMonthSelect(selectEl, baseDate = new Date()) {
+        if (!selectEl) return;
+        selectEl.innerHTML = "";
+        for (let i = -3; i <= 6; i++) {
+          const d = new Date(
+            baseDate.getFullYear(),
+            baseDate.getMonth() + i,
+            1
+          );
+          const y = d.getFullYear();
+          const m = String(d.getMonth() + 1).padStart(2, "0");
+          const yyyymm = `${y}${m}`;
+          const opt = document.createElement("option");
+          opt.value = yyyymm;
+          opt.textContent = `${y}年${m}月 (${yyyymm})`;
+          if (i === 0) opt.selected = true;
+          selectEl.appendChild(opt);
+        }
+      }
+
+      // 讀取 UI：若勾選跨月→自動加入起始月的「下一個月」
+      function getEvangelisticMonthsFromUI() {
+        const start = document.getElementById("evgMonthStart").value;
+        const cross = document.getElementById("evgCrossMonth").checked;
+        const months = [];
+        if (start) {
+          months.push(start);
+          if (cross) {
+            const y = parseInt(start.slice(0, 4), 10);
+            const m = parseInt(start.slice(4), 10);
+            const ny = m === 12 ? y + 1 : y;
+            const nm = m === 12 ? 1 : m + 1;
+            months.push(`${ny}${String(nm).padStart(2, "0")}`);
+          }
+        }
+        return months;
       }
 
       /*******************************************************
@@ -1477,6 +1593,17 @@
 
           select.appendChild(option);
         }
+
+        // Evangelistic 欄位初始化
+        populateYearMonthSelect(document.getElementById("evgMonthStart"));
+        document
+          .getElementById("evgCrossMonth")
+          .addEventListener("change", () => {
+            // 只需重讀目前圖片（若有）
+            document.getElementById("currentImageContainer").style.display =
+              "none";
+            loadCurrentImageFromDB();
+          });
       }
 
       // 頁面載入時初始化
@@ -1564,6 +1691,7 @@
         const monthSelectContainer = document.getElementById(
           "monthSelectContainer"
         );
+        const evgFields = document.getElementById("evangelisticFields");
 
         // 設定變更事件監聽器
         uploadTypeSelect.addEventListener("change", function () {
@@ -1572,9 +1700,15 @@
           if (selectedType === "schedule") {
             // 選擇安排表時顯示年月選項
             monthSelectContainer.style.display = "block";
+            evgFields.style.display = "none";
+          } else if (selectedType === "evangelistic") {
+            // 選擇靈恩佈道會時顯示專用區塊
+            monthSelectContainer.style.display = "none";
+            evgFields.style.display = "block";
           } else {
             // 選擇班級時隱藏年月選項
             monthSelectContainer.style.display = "none";
+            evgFields.style.display = "none";
           }
         });
 
@@ -1582,8 +1716,13 @@
         const initialType = uploadTypeSelect.value;
         if (initialType === "schedule") {
           monthSelectContainer.style.display = "block";
+          evgFields.style.display = "none";
+        } else if (initialType === "evangelistic") {
+          monthSelectContainer.style.display = "none";
+          evgFields.style.display = "block";
         } else {
           monthSelectContainer.style.display = "none";
+          evgFields.style.display = "none";
         }
       }
 
@@ -1600,6 +1739,8 @@
           const yyyymm = document.getElementById("imageMonthSelect").value;
           if (!yyyymm) return null;
           return plugin.paths.scheduleImage(yyyymm);
+        } else if (uploadType === "evangelistic") {
+          return getEvangelisticDbPath(); // 固定節點
         } else {
           return plugin.paths.classImage(uploadType);
         }
@@ -1634,18 +1775,32 @@
           return;
         }
 
-        // 1) 決定 Storage 物件路徑
-        const objectPath = getStorageObjectPathByUI(file);
-        if (!objectPath) {
-          showToast("請先選好上傳類型與年月/班級！", "error");
-          return;
-        }
+        const uploadType = document.getElementById("uploadTypeSelect").value;
+        let objectPath, dbPath, payloadToWrite;
 
-        // 2) 決定 DB 路徑（你原本用的）
-        const dbPath = getCurrentImagePathByUI();
-        if (!dbPath) {
-          showToast("無法取得 DB 路徑，請確認上傳類型與年月/班級。", "error");
-          return;
+        if (uploadType === "evangelistic") {
+          const months = getEvangelisticMonthsFromUI();
+          if (!months.length) {
+            showToast("請至少選擇一個活動月份。", "error");
+            return;
+          }
+          objectPath = getEvangelisticStoragePath(file);
+          dbPath = getEvangelisticDbPath();
+          payloadToWrite = { url: null, months }; // 先占位，等拿到 downloadURL
+        } else {
+          // 1) 決定 Storage 物件路徑
+          objectPath = getStorageObjectPathByUI(file);
+          if (!objectPath) {
+            showToast("請先選好上傳類型與年月/班級！", "error");
+            return;
+          }
+
+          // 2) 決定 DB 路徑（你原本用的）
+          dbPath = getCurrentImagePathByUI();
+          if (!dbPath) {
+            showToast("無法取得 DB 路徑，請確認上傳類型與年月/班級。", "error");
+            return;
+          }
         }
 
         try {
@@ -1674,7 +1829,12 @@
               const downloadURL = await task.snapshot.ref.getDownloadURL();
 
               // 5) 寫回你原本的 DB 路徑（保持和貼網址流程一致）
-              await database.ref(dbPath).set(downloadURL);
+              if (uploadType === "evangelistic") {
+                payloadToWrite.url = downloadURL;
+                await database.ref(dbPath).set(payloadToWrite);
+              } else {
+                await database.ref(dbPath).set(downloadURL);
+              }
 
               showToast("上傳完成！已寫回圖片網址。", "success");
 
@@ -1689,18 +1849,29 @@
       }
 
       // 把某個 URL 渲染到「目前 Firebase 圖片」區塊
-      function renderCurrentImage(url, path) {
+      function renderCurrentImage(urlOrObj, path) {
         const wrap = document.getElementById("currentImageContainer");
         const box = document.getElementById("currentImageBox");
         wrap.style.display = "block";
+
+        let url = null,
+          meta = "";
+        console.log("urlOrObj", urlOrObj);
+        if (typeof urlOrObj === "string") {
+          url = urlOrObj;
+        } else if (urlOrObj && typeof urlOrObj === "object") {
+          url = urlOrObj.url || null;
+          const months = Array.isArray(urlOrObj.months) ? urlOrObj.months : [];
+          meta = `<br><small style='color:#666;'>months: [${months.join(
+            ", "
+          )}]</small>`;
+        }
 
         if (!url) {
           box.innerHTML = `
             <div style="text-align:center; color:#ef6c00;">
               ⚠️ 這個路徑目前沒有存到圖片網址<br>
-              <small style="color:#666">路徑：${
-                path || "(未知)"
-              }<br>你可以先上傳一張後再查看</small>
+              <small style="color:#666">路徑：${path || "(未知)"}${meta}</small>
             </div>
           `;
           return;
@@ -1712,9 +1883,12 @@
             <img 
               src="${url}" 
               style="max-width: 100%; max-height: 200px; border-radius: 4px; display: block; margin: 0 auto;" 
-              onload="this.parentElement.style.borderColor='#4caf50'; this.parentElement.style.backgroundColor='#e8f5e8'; this.nextElementSibling.innerHTML='✅ 讀取成功<br><small style=\\'color:#666;\\'>路徑：${path}</small><br><small style=\\'color:#666;\\'>網址：${url}</small>'; this.nextElementSibling.style.color='#2e7d32';"
-              onerror="this.style.display='none'; this.parentElement.style.borderColor='#ff9800'; this.parentElement.style.backgroundColor='#fff3e0'; this.nextElementSibling.innerHTML='⚠️ 圖片載入失敗（可能是外站限制 hotlink）<br><small>路徑：${path}</small><br><small>網址：${url}</small>'; this.nextElementSibling.style.color='#ef6c00';"
-            />
+              onload="this.parentElement.style.borderColor='#4caf50'; this.parentElement.style.backgroundColor='#e8f5e8';
+                       this.nextElementSibling.innerHTML='✅ 讀取成功<br><small style=\\'color:#666;\\'>路徑：${path}</small><br><small style=\\'color:#666;\\'>網址：${url}</small>${meta}';
+                       this.nextElementSibling.style.color='#2e7d32';"
+              onerror="this.style.display='none'; this.parentElement.style.borderColor='#ff9800'; this.parentElement.style.backgroundColor='#fff3e0';
+                       this.nextElementSibling.innerHTML='⚠️ 圖片載入失敗<br><small>路徑：${path}</small><br><small>網址：${url}</small>${meta}';
+                       this.nextElementSibling.style.color='#ef6c00';" />
             <div style="margin-top: 5px; font-size: 0.9em; color: #1976d2; text-align: center;">
               🔄 嘗試載入 Firebase 目前圖片...
             </div>
@@ -2075,10 +2249,10 @@
           const val = snap.val();
 
           // val 可能是字串（單一 URL）或物件（你之後想擴充多欄位的情況）
-          const url = typeof val === "string" ? val : null;
-          renderCurrentImage(url, path);
+          const hasUrl = typeof val === "string" ? !!val : !!val?.url;
+          renderCurrentImage(val, path);
 
-          if (url) {
+          if (hasUrl) {
             showToast("已載入目前圖片網址", "success");
           } else {
             showToast("這個路徑目前沒有圖片網址", "info");
@@ -2111,6 +2285,22 @@
 
       document
         .getElementById("imageMonthSelect")
+        .addEventListener("change", () => {
+          document.getElementById("currentImageContainer").style.display =
+            "none";
+          loadCurrentImageFromDB();
+        });
+
+      // 靈恩佈道會相關事件監聽器
+      document
+        .getElementById("evgMonthStart")
+        .addEventListener("change", () => {
+          document.getElementById("currentImageContainer").style.display =
+            "none";
+          loadCurrentImageFromDB();
+        });
+      document
+        .getElementById("evgCrossMonth")
         .addEventListener("change", () => {
           document.getElementById("currentImageContainer").style.display =
             "none";
@@ -2153,21 +2343,40 @@
             return;
           }
 
-          // 根據上傳類型決定路徑（使用 plugin.paths）
-          let path;
-          if (uploadType === "schedule") {
-            path = plugin.paths.scheduleImage(selectedMonth);
-          } else {
-            path = plugin.paths.classImage(uploadType);
+          // 如果是靈恩佈道會但沒選擇月份，提示錯誤
+          if (uploadType === "evangelistic") {
+            const months = getEvangelisticMonthsFromUI();
+            if (!months.length) {
+              alert("請至少選擇一個活動月份！");
+              return;
+            }
           }
 
-          database.ref(path).set(imageUrl, function (error) {
+          // 根據上傳類型決定路徑（使用 plugin.paths）
+          let path, payload;
+          if (uploadType === "schedule") {
+            path = plugin.paths.scheduleImage(selectedMonth);
+            payload = imageUrl;
+          } else if (uploadType === "evangelistic") {
+            const months = getEvangelisticMonthsFromUI();
+            path = getEvangelisticDbPath();
+            payload = { url: imageUrl, months };
+          } else {
+            path = plugin.paths.classImage(uploadType);
+            payload = imageUrl;
+          }
+
+          database.ref(path).set(payload, function (error) {
             if (error) {
               alert("上傳失敗：" + error);
             } else {
               alert(
                 `成功上傳圖片網址至 Firebase！\n類型：${
-                  uploadType === "schedule" ? "安排表" : uploadType
+                  uploadType === "schedule"
+                    ? "安排表"
+                    : uploadType === "evangelistic"
+                    ? "靈恩佈道會"
+                    : uploadType
                 }\n路徑：${path}\n網址：${imageUrl}`
               );
               // 清空輸入框和預覽
