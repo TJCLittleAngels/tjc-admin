@@ -92,10 +92,18 @@ export class PluginBase {
 
   // ====== [中處理]：名字切分策略（對 tablesToWork 使用）======
   nameSplitter(text) {
-    // 預設：空白/豎線皆可，移除多餘空白
-    return String(text ?? "")
+    const raw = String(text ?? "")
       .trim()
-      .replace(/\s+/g, " ")
+      .replace(/\s+/g, " ");
+    if (!raw) return [];
+
+    // ✅ 特例：只有兩個字，中間剛好一個空白，視為同一個名字
+    if (/^[\p{L}\p{Script=Han}]{1}\s[\p{L}\p{Script=Han}]{1}$/u.test(raw)) {
+      return [raw.replace(/\s+/g, "")]; // 移除空白 -> ["陳逸"]
+    }
+
+    // 一般情況：空白或豎線分隔
+    return raw
       .split(/[∣\s]+/)
       .map((s) => s.trim())
       .filter(Boolean);
