@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Google 試算表 CSV 轉換 & Firebase 上傳</title>
+    <!-- Papa Parse (CSV 解析) -->
+    <script src="https://cdn.jsdelivr.net/npm/papaparse@5.3.2/papaparse.min.js"></script>
+    <!-- Firebase SDK (舊程式碼參考) -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-storage-compat.js"></script>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="container">
+      <h1>Google 試算表 CSV 轉換 & Firebase 上傳</h1>
+
+      <!-- Plugin 選擇器 -->
+      <div
+        style="
+          margin-bottom: 20px;
+          padding: 15px;
+          background: var(--card);
+          border-radius: var(--radius);
+          box-shadow: var(--shadow);
+        "
+      >
+        <label for="pluginSelect" style="font-weight: 600; margin-right: 10px"
+          >選擇 Plugin：</label
+        >
+        <select
+          id="pluginSelect"
+          style="
+            padding: 8px 12px;
+            border-radius: 8px;
+            border: 1px solid #d1d5db;
+            background: #ffffff;
+          "
+        >
+          <!-- 選項會由 JavaScript 動態生成 -->
+        </select>
+        <span
+          id="pluginInfo"
+          style="margin-left: 15px; color: var(--muted); font-size: 14px"
+        ></span>
+      </div>
+
+      <div class="grid">
+        <!-- 左：Google Sheet 解析（分頁：一般 / 靈恩會） -->
+        <div class="card sheet-parse-card">
+          <div
+            class="sheet-parse-tablist"
+            role="tablist"
+            aria-label="試算表安排類型"
+          >
+            <button
+              type="button"
+              class="sheet-parse-tab active"
+              role="tab"
+              id="tabSheetGeneral"
+              aria-selected="true"
+              aria-controls="panelSheetGeneral"
+            >
+              一般安排表
+            </button>
+            <button
+              type="button"
+              class="sheet-parse-tab"
+              role="tab"
+              id="tabSheetSpiritual"
+              aria-selected="false"
+              aria-controls="panelSheetSpiritual"
+            >
+              靈恩會安排表
+            </button>
+          </div>
+
+          <div
+            id="panelSheetGeneral"
+            class="sheet-parse-panel"
+            role="tabpanel"
+            data-sheet-parse-panel="general"
+            aria-labelledby="tabSheetGeneral"
+          >
+            <h3 class="section-title">📊 Google 試算表解析</h3>
+            <div class="form-row">
+              <label for="urlInput">試算表網址 / Sheet ID</label>
+              <input
+                type="text"
+                id="urlInput"
+                placeholder="貼上 Google 試算表網址或輸入 Sheet ID"
+                value=""
+              />
+            </div>
+            <div class="btns">
+              <button type="button" id="parseButton" class="btn">
+                解析網址
+              </button>
+            </div>
+            <div class="form-row">
+              <label for="sheetIdInput">Sheet ID</label>
+              <input type="text" id="sheetIdInput" placeholder="sheetId" />
+            </div>
+            <div class="form-row">
+              <label for="gidInput">gid</label>
+              <input type="text" id="gidInput" placeholder="gid" />
+            </div>
+            <div class="btns">
+              <button type="button" id="fetchButton" class="btn primary">
+                抓取資料並解析
+              </button>
+              <button type="button" id="openJsonModalBtn" class="btn">
+                查看解析 JSON
+              </button>
+            </div>
+          </div>
+
+          <div
+            id="panelSheetSpiritual"
+            class="sheet-parse-panel"
+            role="tabpanel"
+            data-sheet-parse-panel="spiritual"
+            aria-labelledby="tabSheetSpiritual"
+            hidden
+          >
+            <h3 class="section-title">📊 Google 試算表解析</h3>
+            <div class="form-row">
+              <label for="urlInputSpiritual">試算表網址 / Sheet ID</label>
+              <input
+                type="text"
+                id="urlInputSpiritual"
+                placeholder="貼上 Google 試算表網址或輸入 Sheet ID"
+                value="https://docs.google.com/spreadsheets/d/1vtVg035BQWIUwrHEgJLopksgC2LibTzn0cCJ2QYvUN8/edit?gid=1727065093#gid=1727065093"
+              />
+            </div>
+            <div class="btns">
+              <button type="button" id="parseButtonSpiritual" class="btn">
+                解析網址
+              </button>
+            </div>
+            <div class="form-row">
+              <label for="sheetIdInputSpiritual">Sheet ID</label>
+              <input
+                type="text"
+                id="sheetIdInputSpiritual"
+                placeholder="sheetId"
+              />
+            </div>
+            <div class="form-row">
+              <label for="gidInputSpiritual">gid</label>
+              <input type="text" id="gidInputSpiritual" placeholder="gid" />
+            </div>
+            <div class="btns">
+              <button
+                type="button"
+                id="fetchButtonSpiritual"
+                class="btn primary"
+              >
+                抓取資料並解析
+              </button>
+              <button type="button" id="openJsonModalBtnSpiritual" class="btn">
+                查看解析 JSON
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 右：圖片網址上傳 -->
+        <div class="card">
+          <h3 class="section-title">🖼️ 上傳圖片網址至 Firebase</h3>
+          <div class="form-row">
+            <label for="imageUrlInput">圖片網址</label>
+            <input
+              type="url"
+              id="imageUrlInput"
+              placeholder="https://example.com/image.jpg"
+            />
+          </div>
+          <div class="btns">
+            <button id="previewImageBtn" class="btn">檢視圖片</button>
+          </div>
+
+          <!-- 圖片預覽區域 -->
+          <div id="imagePreviewContainer" style="display: none">
+            <img id="previewImage" />
+            <div style="margin-top: 8px; font-size: 0.9em; color: var(--muted)">
+              圖片預覽
+            </div>
+          </div>
+
+          <div class="form-row">
+            <label for="uploadTypeSelect">上傳類型</label>
+            <select id="uploadTypeSelect">
+              <option value="schedule">安排表</option>
+              <option value="evangelistic">靈恩佈道會</option>
+              <option value="中級班">中級班</option>
+              <option value="信仰造就班">信仰造就班</option>
+              <option value="初級班">初級班</option>
+              <option value="少年班">少年班</option>
+              <option value="幼兒班">幼兒班</option>
+              <option value="幼年班">幼年班</option>
+            </select>
+          </div>
+
+          <div id="monthSelectContainer" class="form-row">
+            <label for="imageMonthSelect">選擇年月</label>
+            <select id="imageMonthSelect">
+              <!-- 動態生成選項 -->
+            </select>
+          </div>
+
+          <div
+            id="evangelisticFields"
+            class="form-row"
+            style="display: none; margin-top: 10px"
+          >
+            <label style="display: block; font-weight: 600; margin-bottom: 8px"
+              >靈恩佈道會設定</label
+            >
+
+            <div class="form-row">
+              <label for="spiritualEventSelect">活動代號</label>
+              <select id="spiritualEventSelect"></select>
+            </div>
+
+            <div
+              class="hint"
+              style="color: var(--muted); font-size: 12px; margin-top: 6px"
+            >
+              讀取與同步寫入：<code
+                >spiritual/events/{eventKey}/meta/imageUrl</code
+              >
+            </div>
+          </div>
+
+          <div class="btns">
+            <button id="loadCurrentImageBtn" class="btn">
+              載入目前 Firebase 圖片
+            </button>
+          </div>
+
+          <div
+            id="currentImageContainer"
+            style="display: none; margin-top: 12px"
+          >
+            <div
+              style="font-size: 0.95em; color: var(--muted); margin-bottom: 6px"
+            >
+              目前儲存在 Firebase 的圖片
+            </div>
+            <div
+              id="currentImageBox"
+              style="
+                border: 1px solid rgba(148, 163, 184, 0.3);
+                padding: 12px;
+                border-radius: 8px;
+                background: rgba(148, 163, 184, 0.05);
+              "
+            >
+              <div style="text-align: center; color: var(--muted)">
+                尚未載入
+              </div>
+            </div>
+          </div>
+
+          <div class="btns">
+            <button id="uploadImageBtn" class="btn primary">
+              上傳圖片網址至 Firebase
+            </button>
+          </div>
+
+          <!-- 直接上傳檔案到 Storage（可選） -->
+          <div class="hr" style="margin-top: 16px"></div>
+          <h4 class="section-title" style="margin-top: 0">
+            或：直接上傳圖片檔到 Storage
+          </h4>
+          <div class="form-row">
+            <input type="file" id="imageFileInput" accept="image/*" />
+          </div>
+          <div class="btns">
+            <button id="uploadFileToStorageBtn" class="btn primary">
+              上傳檔案到 Storage 並寫回 DB
+            </button>
+          </div>
+          <div
+            id="storageUploadHint"
+            style="font-size: 12px; color: var(--muted); margin-top: 6px"
+          >
+            會依畫面上的「上傳類型 / 年月或班級」決定 Storage
+            路徑，成功後把可瀏覽網址寫回既有 DB 路徑。
+          </div>
+        </div>
+      </div>
+
+      <div class="hr"></div>
+
+      <!-- 上傳工作表 -->
+      <div class="card">
+        <h3 class="section-title">📤 上傳工作表至 Firebase</h3>
+        <div class="form-row">
+          <label for="monthInput" id="uploadKeyLabel">月份 (格式：yyyymm)</label>
+          <input type="text" id="monthInput" placeholder="202503" />
+        </div>
+        <div class="btns">
+          <button id="uploadBtn" class="btn primary">
+            上傳工作表至 Firebase
+          </button>
+          <button id="openDeleteMenuBtn" class="btn danger">
+            開啟刪除功能選單
+          </button>
+        </div>
+      </div>
+
+      <div class="grid">
+        <!-- 原本 JSON 卡片的位置 → 換成「使用者工作情形」 -->
+        <div class="card">
+          <h3 class="section-title">👥 使用者工作情形</h3>
+
+          <!-- 篩選器 -->
+          <div class="form-row">
+            <label for="jobFilterSelect">依工作項目篩選</label>
+            <select id="jobFilterSelect">
+              <option value="ALL">（全部工作）</option>
+            </select>
+          </div>
+
+          <div id="userJobs">
+            <div style="text-align: center; color: var(--muted); padding: 20px">
+              尚未產生工作清單
+            </div>
+          </div>
+        </div>
+
+        <!-- 原本「使用者工作情形」的位置 → 換成「已刪除工作區域」 -->
+        <div class="card">
+          <h3 class="section-title">🗑️ 已刪除工作區域（可復原）</h3>
+          <div id="deletedJobs">
+            <div style="text-align: center; color: var(--muted); padding: 20px">
+              尚無已刪除的工作
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Toast 訊息系統 -->
+      <div id="toast" class="toast" aria-live="polite"></div>
+    </div>
+    <!-- /.container 結束 -->
+
+    <!-- JSON 內容檢視 Modal -->
+    <div id="jsonModalBackdrop" class="modal-backdrop" aria-hidden="true">
+      <div
+        class="modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="jsonModalTitle"
+      >
+        <header>
+          <h4 id="jsonModalTitle">解析後的表格 (JSON)</h4>
+          <button id="jsonModalCloseBtn" title="關閉">✕</button>
+        </header>
+        <div class="content">
+          <pre
+            id="jsonOutput"
+            style="
+              background: #0b1221;
+              color: #e5e7eb;
+              border-radius: 10px;
+              padding: 16px;
+              font-size: 12px;
+              max-height: 60vh;
+              overflow: auto;
+              margin: 0;
+            "
+          >
+尚未解析...</pre
+          >
+        </div>
+        <div class="actions">
+          <button id="jsonModalCloseBtn2">關閉</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Delete Menu Modal -->
+    <div id="deleteModalBackdrop" class="modal-backdrop" aria-hidden="true">
+      <div
+        class="modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="deleteModalTitle"
+      >
+        <header>
+          <h4 id="deleteModalTitle">刪除功能選單</h4>
+          <button id="deleteModalCloseBtn" title="關閉">✕</button>
+        </header>
+        <div class="content">
+          <div class="row">
+            <label for="deleteModeSelect">選擇刪除類型</label>
+            <select id="deleteModeSelect">
+              <option value="scheduleData">刪除「安排表資料」（需年月）</option>
+              <option value="scheduleImage">
+                刪除「安排表圖片」（需年月）
+              </option>
+              <option value="classImage">刪除「班級圖片」（選班級）</option>
+            </select>
+            <div class="hint">
+              <div><strong>資料路徑對照：</strong></div>
+              <div>安排表資料：<code>line/schedule/jgtjc/{yyyymm}</code></div>
+              <div>
+                安排表圖片：<code
+                  >line/schedule/jgtjc/schedule_image/{yyyymm}</code
+                >
+              </div>
+              <div>
+                班級圖片：<code>line/schedule/jgtjc/class/{班級名}</code>
+              </div>
+            </div>
+          </div>
+
+          <div class="row" id="deleteMonthRow">
+            <label for="deleteMonthInput2">指定月份 (yyyymm)</label>
+            <input type="text" id="deleteMonthInput2" placeholder="202503" />
+          </div>
+
+          <div class="row" id="deleteClassRow" style="display: none">
+            <label for="deleteClassSelect">選擇班級</label>
+            <select id="deleteClassSelect">
+              <!-- 依你上傳時使用的班級選項同步 -->
+              <option value="中級班">中級班</option>
+              <option value="信仰造就班">信仰造就班</option>
+              <option value="初級班">初級班</option>
+              <option value="少年班">少年班</option>
+              <option value="幼兒班">幼兒班</option>
+              <option value="幼年班">幼年班</option>
+            </select>
+            <div class="hint">
+              此操作會刪除該班級目前儲存在資料庫的圖片網址。
+            </div>
+          </div>
+
+          <div class="hint warn">⚠️ 刪除為不可逆操作，請再次確認！</div>
+        </div>
+        <div class="actions">
+          <button id="deleteModalCancelBtn">取消</button>
+          <button id="doDeleteBtn" class="danger">刪除</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 載入 plugins -->
+    <script type="module" src="./plugin-bootstrap.js"></script>
+
+    <script src="./admin-core.js"></script>
+    <script src="./admin-sheet.js"></script>
+    <script src="./admin-sheet-spiritual.js"></script>
+    <script src="./admin-images.js"></script>
+    <script src="./admin-delete.js"></script>
+  </body>
+</html>
