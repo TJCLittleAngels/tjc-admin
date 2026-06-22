@@ -36,14 +36,7 @@ function getStorageObjectPathByUI(file) {
   return `public/class/${uploadType}/${uploadType}-${ts}.${safeExt}`;
 }
 
-async function uploadSelectedFileAndWriteDB() {
-  const fileInput = document.getElementById("imageFileInput");
-  const file = fileInput?.files?.[0];
-  if (!file) {
-    showToast("請先選擇一張圖片檔！", "error");
-    return;
-  }
-
+async function resolveUploadTargets(file) {
   const uploadType = document.getElementById("uploadTypeSelect").value;
   let objectPath;
   let dbPath;
@@ -53,7 +46,7 @@ async function uploadSelectedFileAndWriteDB() {
     const eventKey = getSelectedSpiritualEventKey();
     if (!eventKey) {
       showToast("請先選擇活動代號。", "error");
-      return;
+      return null;
     }
     objectPath = getEvangelisticStoragePath(file);
     dbPath = getEvangelisticDbPath();
@@ -62,20 +55,32 @@ async function uploadSelectedFileAndWriteDB() {
     objectPath = getStorageObjectPathByUI(file);
     if (!objectPath) {
       showToast("請先選好上傳類型與年月/班級！", "error");
-      return;
+      return null;
     }
 
     dbPath = getCurrentImagePathByUI();
     if (!dbPath) {
       showToast("無法取得 DB 路徑，請確認上傳類型與年月/班級。", "error");
-      return;
+      return null;
     }
   }
+
+  return {
+    uploadType,
+    objectPath,
+    dbPath,
+    payloadToWrite,
+  };
+}
+
+async function uploadFileAndWriteDB(file, { clearImageInput = false, clearPdfInput = false } = {}) {
+  const target = await resolveUploadTargets(file);
+  if (!target) return;
 
   try {
     showToast("開始上傳檔案...", "info");
 
-    const storageRef = storage.ref(objectPath);
+    const storageRef = storage.ref(target.objectPath);
     const metadata = { contentType: file.type || "image/jpeg" };
     const task = storageRef.put(file, metadata);
 
@@ -88,24 +93,167 @@ async function uploadSelectedFileAndWriteDB() {
       async () => {
         const downloadURL = await task.snapshot.ref.getDownloadURL();
 
-        if (uploadType === "evangelistic") {
-          payloadToWrite.url = downloadURL;
-          await database.ref(dbPath).set(payloadToWrite);
+        if (target.uploadType === "evangelistic") {
+          target.payloadToWrite.url = downloadURL;
+          await database.ref(target.dbPath).set(target.payloadToWrite);
           const metaPath = getSpiritualEventMetaPathByUI();
           if (metaPath) {
             await database.ref(`${metaPath}/imageUrl`).set(downloadURL);
           }
         } else {
-          await database.ref(dbPath).set(downloadURL);
+          await database.ref(target.dbPath).set(downloadURL);
         }
 
         showToast("上傳完成！已寫回圖片網址。", "success");
-        document.getElementById("imageFileInput").value = "";
+        if (clearImageInput) document.getElementById("imageFileInput").value = "";
+        if (clearPdfInput) document.getElementById("pdfFileInput").value = "";
         loadCurrentImageFromDB();
       }
     );
   } catch (e) {
     showToast("上傳失敗：" + e.message, "error");
+  }
+}
+
+async function uploadSelectedFileAndWriteDB() {
+  const fileInput = document.getElementById("imageFileInput");
+  const file = fileInput?.files?.[0];
+  if (!file) {
+    showToast("請先選擇一張圖片檔！", "error");
+    return;
+  }
+  if (!String(file.type || "").startsWith("image/")) {
+    showToast("圖片上傳只接受圖片檔案。", "error");
+    return;
+  }
+
+  await uploadFileAndWriteDB(file, { clearImageInput: true });
+}
+
+function getPdfPreviewOptions() {
+  const pageNumber = Math.max(
+    1,
+    parseInt(document.getElementById("pdfPageInput")?.value || "1", 10) || 1,
+  );
+  const format = document.getElementById("pdfOutputFormatSelect")?.value || "png";
+  const scale = Math.max(
+    1,
+    Number(document.getElementById("pdfScaleInput")?.value || "2") || 2,
+  );
+
+  return { pageNumber, format, scale };
+}
+
+function renderPdfPreview(url, metaText) {
+  const container = document.getElementById("pdfPreviewContainer");
+  const box = document.getElementById("pdfPreviewBox");
+  container.style.display = "block";
+  box.innerHTML = `
+    <div style="border: 1px solid #2196f3; padding: 10px; border-radius: 4px; background: #e3f2fd;">
+      <img src="${url}" style="max-width: 100%; max-height: 240px; border-radius: 4px; display: block; margin: 0 auto;" />
+      <div style="margin-top: 6px; font-size: 0.9em; color: #1976d2; text-align: center;">
+        ${metaText}
+      </div>
+    </div>
+  `;
+}
+
+async function convertPdfToImageFile(file, options = getPdfPreviewOptions()) {
+  if (!file) {
+    throw new Error("請先選擇 PDF 檔案。");
+  }
+  if (file.type !== "application/pdf") {
+    throw new Error("PDF 上傳只接受 PDF 檔案。");
+  }
+  if (!window.pdfjsLib) {
+    throw new Error("PDF 轉圖元件尚未載入完成，請稍後再試。");
+  }
+
+  const pdfjsLib = window.pdfjsLib;
+  const arrayBuffer = await file.arrayBuffer();
+  const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+  const pdf = await loadingTask.promise;
+  if (options.pageNumber > pdf.numPages) {
+    throw new Error(`PDF 只有 ${pdf.numPages} 頁，無法讀取第 ${options.pageNumber} 頁。`);
+  }
+
+  const page = await pdf.getPage(options.pageNumber);
+  const viewport = page.getViewport({ scale: options.scale });
+  const canvas = document.createElement("canvas");
+  const context = canvas.getContext("2d");
+  if (!context) {
+    throw new Error("無法建立 Canvas 繪圖環境。");
+  }
+
+  canvas.width = viewport.width;
+  canvas.height = viewport.height;
+
+  await page.render({
+    canvasContext: context,
+    viewport,
+  }).promise;
+
+  const mimeType = options.format === "jpg" ? "image/jpeg" : "image/png";
+  const quality = options.format === "jpg" ? 0.92 : undefined;
+  const blob = await new Promise((resolve, reject) => {
+    canvas.toBlob((result) => {
+      if (result) resolve(result);
+      else reject(new Error("PDF 轉圖失敗。"));
+    }, mimeType, quality);
+  });
+
+  const ext = options.format === "jpg" ? "jpg" : "png";
+  const imageFile = new File([blob], `${file.name.replace(/\.pdf$/i, "")}-p${options.pageNumber}.${ext}`, {
+    type: mimeType,
+  });
+  const previewUrl = canvas.toDataURL(mimeType, quality);
+
+  return {
+    imageFile,
+    previewUrl,
+    pageCount: pdf.numPages,
+  };
+}
+
+async function previewPdfAsImage() {
+  const file = document.getElementById("pdfFileInput")?.files?.[0];
+  if (!file) {
+    showToast("請先選擇 PDF 檔案！", "error");
+    return;
+  }
+
+  try {
+    showToast("PDF 轉圖中...", "info");
+    const options = getPdfPreviewOptions();
+    const result = await convertPdfToImageFile(file, options);
+    renderPdfPreview(
+      result.previewUrl,
+      `✅ 第 ${options.pageNumber} 頁 / 共 ${result.pageCount} 頁，格式：${options.format.toUpperCase()}`,
+    );
+    showToast("PDF 預覽完成", "success");
+  } catch (e) {
+    showToast("PDF 預覽失敗：" + e.message, "error");
+  }
+}
+
+async function uploadPdfAsImageAndWriteDB() {
+  const file = document.getElementById("pdfFileInput")?.files?.[0];
+  if (!file) {
+    showToast("請先選擇 PDF 檔案！", "error");
+    return;
+  }
+
+  try {
+    showToast("PDF 轉圖中...", "info");
+    const options = getPdfPreviewOptions();
+    const result = await convertPdfToImageFile(file, options);
+    renderPdfPreview(
+      result.previewUrl,
+      `✅ 第 ${options.pageNumber} 頁 / 共 ${result.pageCount} 頁，格式：${options.format.toUpperCase()}`,
+    );
+    await uploadFileAndWriteDB(result.imageFile, { clearPdfInput: true });
+  } catch (e) {
+    showToast("PDF 上傳失敗：" + e.message, "error");
   }
 }
 
@@ -227,6 +375,14 @@ document
   .getElementById("uploadFileToStorageBtn")
   .addEventListener("click", uploadSelectedFileAndWriteDB);
 
+document
+  .getElementById("previewPdfBtn")
+  .addEventListener("click", previewPdfAsImage);
+
+document
+  .getElementById("uploadPdfToStorageBtn")
+  .addEventListener("click", uploadPdfAsImageAndWriteDB);
+
 document.getElementById("uploadTypeSelect").addEventListener("change", () => {
   document.getElementById("currentImageContainer").style.display = "none";
   loadCurrentImageFromDB();
@@ -240,6 +396,22 @@ document.getElementById("imageMonthSelect").addEventListener("change", () => {
 document.getElementById("spiritualEventSelect").addEventListener("change", () => {
   document.getElementById("currentImageContainer").style.display = "none";
   loadCurrentImageFromDB();
+});
+
+document.getElementById("imageFileInput").addEventListener("change", () => {
+  const pdfInput = document.getElementById("pdfFileInput");
+  if (document.getElementById("imageFileInput").files?.length) {
+    pdfInput.value = "";
+    document.getElementById("pdfPreviewContainer").style.display = "none";
+  }
+});
+
+document.getElementById("pdfFileInput").addEventListener("change", () => {
+  const imageInput = document.getElementById("imageFileInput");
+  if (document.getElementById("pdfFileInput").files?.length) {
+    imageInput.value = "";
+  }
+  document.getElementById("pdfPreviewContainer").style.display = "none";
 });
 
 document.getElementById("uploadImageBtn").addEventListener("click", function () {

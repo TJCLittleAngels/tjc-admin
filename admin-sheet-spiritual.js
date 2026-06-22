@@ -10,7 +10,7 @@ function preprocessSpiritualSheetCsv(csv2d) {
   for (let r = 0; r < next.length; r++) {
     for (let c = 0; c < next[r].length; c++) {
       const raw = String(next[r][c] ?? "").trim();
-      const splitMatch = raw.match(/^大門\s*\/\s*副堂$/);
+      const splitMatch = raw.match(/^大門\s*[\/／]\s*副堂$/);
       const rightCell = String(next[r][c + 1] ?? "").trim();
       if (splitMatch && rightCell === "") {
         next[r][c] = "大門";
@@ -20,6 +20,21 @@ function preprocessSpiritualSheetCsv(csv2d) {
           col: c + 1,
           left: next[r][c],
           right: next[r][c + 1],
+        });
+      }
+    }
+  }
+
+  for (let r = 0; r < next.length - 1; r++) {
+    for (let c = 0; c < next[r].length; c++) {
+      const cell = String(csv2d[r]?.[c] ?? "").trim();
+      const below = String(next[r + 1]?.[c] ?? "").trim();
+      if (cell === "聖餐器皿清洗" && below === "") {
+        next[r + 1][c] = "聖餐器皿清洗";
+        console.log("[靈恩會前處理] 補齊聖餐器皿清洗", {
+          row: r + 2,
+          col: c + 1,
+          value: "聖餐器皿清洗",
         });
       }
     }
@@ -448,34 +463,95 @@ function parseBaptismSpecialSection(section, ym, nameSplitter) {
   const workSheet = {};
   const previewJobs = [];
   const weekdayText = ["日", "一", "二", "三", "四", "五", "六"];
+  let latestParsedDate = null;
+  const flowRows = [];
+  const isTimeLike = (text) => /^\d{1,2}:\d{2}$/.test(String(text ?? "").trim());
+
+  const pushJob = (person, parsedDate, work) => {
+    const cleanPerson = String(person ?? "").trim().replace(/\s+/g, "");
+    if (!cleanPerson || !parsedDate || !work) return;
+    const job = {
+      date: parsedDate.displayDate,
+      weekDay: weekdayText[parsedDate.actualDate.getDay()],
+      work,
+      person: cleanPerson,
+    };
+    previewJobs.push(job);
+    addSpiritualSpecialJob(workSheet, cleanPerson, {
+      date: job.date,
+      weekDay: job.weekDay,
+      work: job.work,
+    });
+  };
 
   for (let i = 0; i < section.rows.length; i++) {
-    const headerRow = section.rows[i];
-    const parsedDate = parseSpiritualDateValue(headerRow?.[0], ym);
-    const timeSlot = String(headerRow?.[1] ?? "").trim();
+    const row = section.rows[i];
+    const parsedDate = parseSpiritualDateValue(row?.[0], ym);
+    const secondCellText = String(row?.[1] ?? "").trim();
+    const timeSlot = isTimeLike(secondCellText) ? secondCellText : "";
+
+    if (parsedDate) latestParsedDate = parsedDate;
+
+    const firstCell = String(row?.[0] ?? "").trim();
+    const thirdCell = String(row?.[2] ?? "").trim();
+    const nextRow = section.rows[i + 1];
+    const looksLikeLegacyNamesRow =
+      nextRow &&
+      String(nextRow?.[0] ?? "").trim() === "" &&
+      String(nextRow?.[1] ?? "").trim() === "";
+
+    if (parsedDate && timeSlot && looksLikeLegacyNamesRow) {
+      for (let c = 2; c < row.length; c++) {
+        const task = String(row[c] ?? "").trim();
+        const rawNames = String(nextRow[c] ?? "").trim();
+        if (!task || !rawNames || rawNames === "-") continue;
+
+        splitSpiritualNames(rawNames, nameSplitter).forEach((person) => {
+          pushJob(person, parsedDate, `${timeSlot} ${section.title}-${task}`);
+        });
+      }
+      i += 1;
+      continue;
+    }
+
+    const isSingleFlowRow =
+      parsedDate &&
+      timeSlot &&
+      thirdCell &&
+      row.slice(3).every((cell) => String(cell ?? "").trim() === "");
+    if (isSingleFlowRow) {
+      flowRows.push({
+        parsedDate,
+        task: thirdCell,
+      });
+      continue;
+    }
+
+    const isRoleHeaderRow =
+      !parsedDate &&
+      !isTimeLike(secondCellText) &&
+      row.some((cell) => String(cell ?? "").trim() !== "");
     const namesRow = section.rows[i + 1];
+    const isRoleNamesRow =
+      namesRow &&
+      namesRow.some((cell) => String(cell ?? "").trim() !== "");
 
-    if (!parsedDate || !timeSlot || !namesRow) continue;
-    if (String(namesRow?.[0] ?? "").trim() !== "") continue;
-    if (String(namesRow?.[1] ?? "").trim() !== "") continue;
+    if (!isRoleHeaderRow || !isRoleNamesRow || !latestParsedDate) {
+      continue;
+    }
 
-    for (let c = 2; c < headerRow.length; c++) {
-      const task = String(headerRow[c] ?? "").trim();
-      const rawNames = String(namesRow[c] ?? "").trim();
+    for (let c = 0; c < row.length; c++) {
+      const task = String(row[c] ?? "").trim();
+      const rawNames = String(namesRow?.[c] ?? "").trim();
       if (!task || !rawNames || rawNames === "-") continue;
 
-      splitSpiritualNames(rawNames, nameSplitter).forEach((person) => {
-        const job = {
-          date: parsedDate.displayDate,
-          weekDay: weekdayText[parsedDate.actualDate.getDay()],
-          work: `${timeSlot} ${section.title}-${task}`,
-          person: String(person ?? "").trim().replace(/\s+/g, ""),
-        };
-        previewJobs.push(job);
-        addSpiritualSpecialJob(workSheet, person, {
-          date: job.date,
-          weekDay: job.weekDay,
-          work: job.work,
+      const targetDates = flowRows.length
+        ? flowRows.map((item) => item.parsedDate)
+        : [latestParsedDate];
+
+      targetDates.forEach((targetDate) => {
+        splitSpiritualNames(rawNames, nameSplitter).forEach((person) => {
+          pushJob(person, targetDate, `${section.title}-${task}`);
         });
       });
     }
@@ -492,6 +568,61 @@ function parseCommunionPreparationSection(section, ym, nameSplitter) {
   const workSheet = {};
   const previewJobs = [];
   const weekdayText = ["日", "一", "二", "三", "四", "五", "六"];
+
+  const pushJob = (person, parsedDate, work) => {
+    const cleanPerson = String(person ?? "").trim().replace(/\s+/g, "");
+    if (!cleanPerson || !parsedDate || !work) return;
+    const job = {
+      date: parsedDate.displayDate,
+      weekDay: weekdayText[parsedDate.actualDate.getDay()],
+      work,
+      person: cleanPerson,
+    };
+    previewJobs.push(job);
+    addSpiritualSpecialJob(workSheet, cleanPerson, {
+      date: job.date,
+      weekDay: job.weekDay,
+      work: job.work,
+    });
+  };
+
+  const looksLikeCompactFormat = section.rows.every(
+    (row) => Array.isArray(row) && row.length <= 5,
+  );
+
+  if (looksLikeCompactFormat) {
+    let currentDate = null;
+    let currentTask = "";
+    let currentPeople = [];
+
+    section.rows.forEach((row) => {
+      const parsedDate = parseSpiritualDateValue(row?.[0], ym);
+      if (parsedDate) currentDate = parsedDate;
+      if (!currentDate) return;
+
+      const rawTask = String(row?.[1] ?? "").trim();
+      if (rawTask && rawTask !== "-") currentTask = rawTask;
+      const task = currentTask;
+      if (!task) return;
+
+      const rowPeople = [row?.[3], row?.[4]]
+        .map((rawNames) => String(rawNames ?? "").trim())
+        .filter((text) => text && text !== "-");
+      if (rowPeople.length > 0) currentPeople = rowPeople;
+      const people = currentPeople;
+      if (!people.length) return;
+
+      people.forEach((text) => {
+        splitSpiritualNames(text, nameSplitter).forEach((person) => {
+          pushJob(person, currentDate, `${section.title}-${task}`);
+        });
+      });
+    });
+
+    console.log("[靈恩會特別處理] 聖餐準備區段工作日期對照清單", previewJobs);
+    return workSheet;
+  }
+
   let currentLeftDate = null;
   let currentRightTask = "";
   let currentRightPeople = [];
@@ -509,18 +640,7 @@ function parseCommunionPreparationSection(section, ym, nameSplitter) {
         if (!text || text === "-") return;
 
         splitSpiritualNames(text, nameSplitter).forEach((person) => {
-          const job = {
-            date: leftDate.displayDate,
-            weekDay: weekdayText[leftDate.actualDate.getDay()],
-            work: `${section.title}-${leftTask}`,
-            person: String(person ?? "").trim().replace(/\s+/g, ""),
-          };
-          previewJobs.push(job);
-          addSpiritualSpecialJob(workSheet, person, {
-            date: job.date,
-            weekDay: job.weekDay,
-            work: job.work,
-          });
+          pushJob(person, leftDate, `${section.title}-${leftTask}`);
         });
       });
     }
@@ -542,18 +662,7 @@ function parseCommunionPreparationSection(section, ym, nameSplitter) {
         if (!text || text === "-") return;
 
         splitSpiritualNames(text, nameSplitter).forEach((person) => {
-          const job = {
-            date: rightDate.displayDate,
-            weekDay: weekdayText[rightDate.actualDate.getDay()],
-            work: `${section.title}-${rightTask}`,
-            person: String(person ?? "").trim().replace(/\s+/g, ""),
-          };
-          previewJobs.push(job);
-          addSpiritualSpecialJob(workSheet, person, {
-            date: job.date,
-            weekDay: job.weekDay,
-            work: job.work,
-          });
+          pushJob(person, rightDate, `${section.title}-${rightTask}`);
         });
       });
     }
