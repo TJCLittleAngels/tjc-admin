@@ -238,6 +238,8 @@ function getDatesForWeekday(year, month, weekdayNum) {
 function tablesToWork(finalTables, { year, month }, nameSplitter) {
   const workSheet = {};
   const validWeekdays = ["日", "一", "二", "三", "四", "五", "六"];
+  const isNoAssignmentMarker = (value) =>
+    /^[\-‐‑‒–—―−－]+$/.test(String(value ?? "").trim());
   const weekdayMapping = {
     日: 0,
     一: 1,
@@ -273,12 +275,12 @@ function tablesToWork(finalTables, { year, month }, nameSplitter) {
         const dateVal = table[i][0];
         for (let j = workStartIndex; j < table[i].length; j++) {
           const cellVal = String(table[i][j] ?? "").trim();
-          if (cellVal === "" || cellVal === "-") continue;
+          if (cellVal === "" || isNoAssignmentMarker(cellVal)) continue;
 
           const people = nameSplitter(cellVal);
           people.forEach((personName) => {
             const clean = personName.trim().replace(/\s+/g, "");
-            if (!clean) return;
+            if (!clean || isNoAssignmentMarker(clean)) return;
             const key = clean;
             if (!workSheet[key]) workSheet[key] = [];
             workSheet[key].push({
@@ -297,7 +299,7 @@ function tablesToWork(finalTables, { year, month }, nameSplitter) {
           const person = String(table[i][j] ?? "")
             .trim()
             .replace(/\s+/g, "");
-          if (person === "" || person === "-") continue;
+          if (person === "" || isNoAssignmentMarker(person)) continue;
           const targetWeekday = table[i][0];
           if (!validWeekdays.includes(targetWeekday[0])) {
             console.warn("偵測到無效星期:", targetWeekday);
